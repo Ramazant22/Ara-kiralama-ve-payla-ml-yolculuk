@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const { encrypt, decrypt } = require('../utils/encryption');
 
 const userSchema = new mongoose.Schema({
   firstName: {
@@ -29,7 +30,15 @@ const userSchema = new mongoose.Schema({
   phoneNumber: {
     type: String,
     required: [true, 'Telefon numarası zorunludur'],
-    trim: true
+    trim: true,
+    set: function(phone) {
+      // Telefon numarasını şifrele
+      return phone ? encrypt(phone) : phone;
+    },
+    get: function(phone) {
+      // Telefon numarasının şifresini çöz
+      return phone ? decrypt(phone) : phone;
+    }
   },
   isPhoneVerified: {
     type: Boolean,
@@ -39,6 +48,35 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  isActive: {
+    type: Boolean,
+    default: true
+  },
+  twoFactorEnabled: {
+    type: Boolean,
+    default: false
+  },
+  twoFactorSecret: {
+    type: String,
+    select: false
+  },
+  twoFactorVerified: {
+    type: Boolean,
+    default: false
+  },
+  passwordChangedAt: Date,
+  passwordResetToken: String,
+  passwordResetExpires: Date,
+  loginAttempts: {
+    type: Number,
+    default: 0
+  },
+  accountLocked: {
+    type: Boolean,
+    default: false
+  },
+  lockUntil: Date,
+  lastLogin: Date,
   profilePicture: {
     type: String,
     default: ''
@@ -69,27 +107,69 @@ userSchema.pre('save', async function(next) {
   try {
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);
+    
+    // Şifre değiştirildiğinde timestamp güncelle
+    if (this.isModified('password') && !this.isNew) {
+      this.passwordChangedAt = Date.now() - 1000;
+    }
+    
     next();
   } catch (error) {
     next(error);
   }
 });
 
-// Şifre karşılaştırma metodu - instance method
+// Şifre karşılaştırma metodu
 userSchema.methods.comparePassword = async function(candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
 
-// Statik şifre karşılaştırma metodu - lean() kullanımı için
-userSchema.statics.comparePassword = async function(candidatePassword, hashedPassword) {
-  return await bcrypt.compare(candidatePassword, hashedPassword);
+// Şifre sıfırlama token'ı oluşturma
+userSchema.methods.createPasswordResetToken = function() {
+  const resetToken = crypto.randomBytes(32).toString('hex');
+  
+  this.passwordResetToken = crypto
+    .createHash('sha256')
+    .update(resetToken)
+    .digest('hex');
+    
+  this.passwordResetExpires = Date.now() + 10 * 60 * 1000; // 10 dakika
+  
+  return resetToken;
+};
+
+// Başarısız giriş denemelerini kontrol et
+userSchema.methods.incrementLoginAttempts = async function() {
+  // Hesap kilitli ve kilit süresi dolmamışsa
+  if (this.lockUntil && this.lockUntil > Date.now()) {
+    return;
+  }
+  
+  this.loginAttempts += 1;
+  
+  // 5 başarısız deneme sonrası hesabı kilitle
+  if (this.loginAttempts >= 5) {
+    this.accountLocked = true;
+    this.lockUntil = Date.now() + 30 * 60 * 1000; // 30 dakika
+  }
+  
+  await this.save();
+};
+
+// Başarılı girişte deneme sayısını sıfırla
+userSchema.methods.resetLoginAttempts = async function() {
+  this.loginAttempts = 0;
+  this.accountLocked = false;
+  this.lockUntil = null;
+  this.lastLogin = Date.now();
+  await this.save();
 };
 
 // E-posta ve phoneNumber için indeks oluşturma
 userSchema.index({ email: 1 }, { unique: true });
 userSchema.index({ phoneNumber: 1 });
 
-// Koleksiyon adını açıkça belirtiyoruz - büyük harfle 'Users'
+// Koleksiyon adını açıkça belirtiyoruz
 const User = mongoose.model('User', userSchema, 'Users');
 
-module.exports = User; 
+module.exports = User;
