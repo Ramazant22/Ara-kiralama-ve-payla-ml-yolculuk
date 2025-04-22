@@ -8,6 +8,8 @@ const vehicleRoutes = require('./routes/vehicleRoutes');
 const rentalRoutes = require('./routes/rentalRoutes');
 const rideShareRoutes = require('./routes/rideShareRoutes');
 const mobileRoutes = require('./routes/mobileRoutes');
+const verificationRoutes = require('./routes/verificationRoutes');
+const reviewRoutes = require('./routes/reviewRoutes');
 const compression = require('compression');
 
 // Çevre değişkenlerini yükle
@@ -38,6 +40,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/vehicles', vehicleRoutes);
 app.use('/api/rentals', rentalRoutes);
 app.use('/api/ride-shares', rideShareRoutes);
+app.use('/api/verifications', verificationRoutes);
+app.use('/api/reviews', reviewRoutes);
 
 // Mobil API Rotaları
 app.use('/api/mobile', mobileRoutes);

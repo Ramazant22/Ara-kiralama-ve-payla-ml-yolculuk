@@ -88,11 +88,52 @@ const userSchema = new mongoose.Schema({
   },
   rating: {
     type: Number,
-    default: 0
+    default: 0,
+    min: 0,
+    max: 5
   },
   ratingCount: {
     type: Number,
     default: 0
+  },
+  identityVerified: {
+    type: Boolean,
+    default: false
+  },
+  drivingLicenseVerified: {
+    type: Boolean,
+    default: false
+  },
+  addressVerified: {
+    type: Boolean,
+    default: false
+  },
+  verificationDocuments: [{
+    type: {
+      type: String,
+      enum: ['identity', 'drivingLicense', 'address', 'other'],
+      required: true
+    },
+    documentUrl: {
+      type: String,
+      required: true
+    },
+    verified: {
+      type: Boolean,
+      default: false
+    },
+    uploadedAt: {
+      type: Date,
+      default: Date.now
+    },
+    verifiedAt: Date,
+    notes: String
+  }],
+  trustLevel: {
+    type: Number,
+    default: 1,
+    min: 1,
+    max: 5
   },
   createdAt: {
     type: Date,

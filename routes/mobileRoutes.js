@@ -7,6 +7,8 @@ const vehicleController = require('../controllers/vehicleController');
 const rentalController = require('../controllers/rentalController');
 const rideShareController = require('../controllers/rideShareController');
 const syncController = require('../controllers/syncController');
+const verificationController = require('../controllers/verificationController');
+const reviewController = require('../controllers/reviewController');
 
 const router = express.Router();
 
@@ -56,5 +58,46 @@ router.get('/ride-shares/:id', protectMobile, rideShareController.getRideShare);
 router.post('/ride-shares', protectMobile, rideShareController.createRideShare);
 router.patch('/ride-shares/:id', protectMobile, rideShareController.updateRideShare);
 router.post('/ride-shares/:id/cancel', protectMobile, rideShareController.cancelRideShare);
+
+// Kullanıcı profil doğrulama rotaları
+router.post(
+  '/verifications/upload',
+  authController.protect,
+  verificationController.uploadVerificationDocument,
+  verificationController.submitVerificationDocument
+);
+
+router.get(
+  '/verifications/status',
+  authController.protect,
+  verificationController.getUserVerificationStatus
+);
+
+// Kullanıcı değerlendirme rotaları
+router.post(
+  '/reviews',
+  authController.protect,
+  reviewController.createReview
+);
+
+router.get(
+  '/reviews/user/:userId',
+  reviewController.getUserReviews
+);
+
+router.get(
+  '/reviews/my-reviews',
+  authController.protect,
+  reviewController.getMyReviews
+);
+
+router.get(
+  '/reviews/stats/:userId',
+  reviewController.getUserReviewStats
+);
+
+router.route('/reviews/:reviewId')
+  .patch(authController.protect, reviewController.updateReview)
+  .delete(authController.protect, reviewController.deleteReview);
 
 module.exports = router; 
