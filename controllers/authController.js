@@ -2,11 +2,37 @@ const User = require('../models/User');
 const { generateToken } = require('../utils/jwtUtils');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+const emailService = require('../services/emailService');
 
 // Kullanıcı kaydı
 exports.register = async (req, res) => {
   try {
-    const { firstName, lastName, email, password, phoneNumber } = req.body;
+    console.log('Kayıt isteği alındı:', JSON.stringify(req.body));
+    
+    // Veri doğrulama ve esneklik sağlama
+    let { firstName, lastName, fullname, email, password, phoneNumber } = req.body;
+    
+    // Eğer firstName ve lastName yoksa ama fullname varsa, onları çıkar
+    if (!firstName && !lastName && fullname) {
+      const nameParts = fullname.split(' ');
+      firstName = nameParts[0] || '';
+      lastName = nameParts.slice(1).join(' ') || '';
+    }
+    
+    // Eğer bir veri eksikse hata döndür
+    if (!email || !password) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'E-posta ve şifre alanları zorunludur'
+      });
+    }
+    
+    if (!firstName || !lastName) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Ad ve Soyad alanları zorunludur'
+      });
+    }
 
     // E-posta kontrolü (index kullanıyor olmalı)
     const existingUser = await User.findOne({ email }).lean();
@@ -23,15 +49,28 @@ exports.register = async (req, res) => {
       lastName,
       email,
       password,
-      phoneNumber
+      phoneNumber: phoneNumber || ''
     });
 
     // Doğrulama kodları oluşturma (gerçek uygulamada SMS ve e-posta gönderimi yapılacak)
     const emailVerificationToken = crypto.randomBytes(3).toString('hex');
     const phoneVerificationCode = Math.floor(100000 + Math.random() * 900000).toString();
 
-    // Burada gerçek uygulamada SMS ve e-posta gönderimi yapılacak
+    // E-posta doğrulama kodu gönderimi
     console.log(`E-posta doğrulama kodu: ${emailVerificationToken}`);
+    
+    try {
+      const emailResult = await emailService.sendVerificationEmail(email, emailVerificationToken);
+      console.log('E-posta gönderim sonucu:', emailResult);
+      
+      if (!emailResult.success) {
+        console.error('E-posta gönderimi başarısız:', emailResult.error);
+      }
+    } catch (emailError) {
+      console.error('E-posta gönderme hatası:', emailError);
+    }
+    
+    // SMS göndermek için gerekli servis entegrasyonu henüz yok
     console.log(`Telefon doğrulama kodu: ${phoneVerificationCode}`);
 
     // JWT token oluşturma
@@ -60,6 +99,7 @@ exports.register = async (req, res) => {
 // Kullanıcı girişi
 exports.login = async (req, res) => {
   try {
+    console.log('Giriş isteği alındı:', req.body);
     const { email, password } = req.body;
 
     // E-posta ve şifre kontrolü
@@ -71,19 +111,34 @@ exports.login = async (req, res) => {
     }
 
     // Kullanıcı kontrolü - sadece gerekli alanları seç
+    console.log('Kullanıcı aranıyor:', email);
     const user = await User.findOne({ email })
       .select('+password firstName lastName email phoneNumber createdAt')
       .lean();
       
     if (!user) {
+      console.log('Kullanıcı bulunamadı:', email);
       return res.status(401).json({
         status: 'fail',
         message: 'E-posta veya şifre hatalı'
       });
     }
     
-    // User modeli üzerinden şifre karşılaştırma
-    const isPasswordCorrect = await User.comparePassword(password, user.password);
+    console.log('Kullanıcı bulundu:', user.email);
+    console.log('Şifre kontrolü yapılıyor...');
+    
+    // Şifre karşılaştırma işlemi bcrypt ile doğrudan yapılıyor
+    const bcrypt = require('bcryptjs');
+    let isPasswordCorrect = false;
+    
+    try {
+      isPasswordCorrect = await bcrypt.compare(password, user.password);
+    } catch (bcryptError) {
+      console.error('Bcrypt hatası:', bcryptError.message);
+    }
+    
+    console.log('Şifre doğru mu:', isPasswordCorrect);
+    
     if (!isPasswordCorrect) {
       return res.status(401).json({
         status: 'fail',
@@ -93,22 +148,33 @@ exports.login = async (req, res) => {
 
     // JWT token oluşturma
     const token = generateToken(user._id);
+    console.log('Token oluşturuldu');
 
     // Şifreyi response'dan çıkar
     delete user.password;
+    
+    // Frontend beklentisine uygun format
+    const formattedUser = {
+      id: user._id.toString(),
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      phoneNumber: user.phoneNumber || '',
+      createdAt: user.createdAt || new Date().toISOString()
+    };
+    
+    console.log('Giriş başarılı, kullanıcı yanıtı oluşturuluyor:', formattedUser);
 
     res.status(200).json({
       status: 'success',
       token,
-      data: {
-        user
-      }
+      user: formattedUser
     });
   } catch (error) {
     console.error('Giriş hatası:', error);
     res.status(500).json({
       status: 'error',
-      message: error.message
+      message: 'Bir hata oluştu. Lütfen daha sonra tekrar deneyin.'
     });
   }
 };

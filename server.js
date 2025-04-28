@@ -8,23 +8,31 @@ const vehicleRoutes = require('./routes/vehicleRoutes');
 const rentalRoutes = require('./routes/rentalRoutes');
 const rideShareRoutes = require('./routes/rideShareRoutes');
 const mobileRoutes = require('./routes/mobileRoutes');
-const verificationRoutes = require('./routes/verificationRoutes');
-const reviewRoutes = require('./routes/reviewRoutes');
+// const verificationRoutes = require('./routes/verificationRoutes'); // Bu modül mevcut değil
+// const reviewRoutes = require('./routes/reviewRoutes'); // Bu modül mevcut değil
 const compression = require('compression');
 
 // Çevre değişkenlerini yükle
 dotenv.config();
+
+// E-posta ayarlarının yüklendiğini doğrula
+console.log('E-posta konfigürasyon kontrolü:');
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('EMAIL_USER:', process.env.EMAIL_USER);
+console.log('EMAIL_HOST:', process.env.EMAIL_HOST);
+console.log('EMAIL_FROM:', process.env.EMAIL_FROM);
 
 // Veritabanı bağlantısı
 connectDB();
 
 const app = express();
 
-// CORS ayarları - basitleştirilmiş yapılandırma
+// CORS ayarları - daha detaylı yapılandırma
 app.use(cors({
-  origin: '*', // Tüm kaynaklara izin ver (geliştirme aşamasında)
+  origin: ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002'], // Web uygulaması için izin verilen kaynaklar
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'deviceid']
+  allowedHeaders: ['Content-Type', 'Authorization', 'deviceid'],
+  credentials: true // Cookie ve Auth Header desteği
 }));
 
 // Performans optimizasyonları
@@ -40,11 +48,20 @@ app.use('/api/auth', authRoutes);
 app.use('/api/vehicles', vehicleRoutes);
 app.use('/api/rentals', rentalRoutes);
 app.use('/api/ride-shares', rideShareRoutes);
-app.use('/api/verifications', verificationRoutes);
-app.use('/api/reviews', reviewRoutes);
-
+// app.use('/api/verifications', verificationRoutes); // Bu modül mevcut değil
+// app.use('/api/reviews', reviewRoutes); // Bu modül mevcut değil
 // Mobil API Rotaları
 app.use('/api/mobile', mobileRoutes);
+
+// Sağlık Kontrolü (Health Check) Endpoint'i
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'success', 
+    message: 'Sunucu çalışıyor',
+    timestamp: new Date().toISOString(),
+    version: '1.0.0'
+  });
+});
 
 // Ana route
 app.get('/', (req, res) => {

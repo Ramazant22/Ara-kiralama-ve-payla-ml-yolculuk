@@ -13,8 +13,17 @@ const connectDB = async () => {
       family: 4 // IPv4 kullan
     };
 
-    // Doğrudan veritabanı adresini belirterek bağlantı kuruyoruz
-    const dbUri = 'mongodb://localhost:27017/takdrive';
+    // MongoDB Atlas bağlantı URI'si
+    let dbUri = process.env.MONGODB_URI;
+
+    // Eğer MONGODB_URI çevresel değişkeni yoksa varsayılan bağlantıyı kullan
+    if (!dbUri) {
+      // Örnek MongoDB Atlas bağlantısı
+      dbUri = 'mongodb+srv://takdrive:takdrive123@cluster0.mongodb.net/takdrive?retryWrites=true&w=majority';
+      console.log('Yerel veritabanı bağlantısı kullanılıyor');
+    }
+
+    // Veritabanı bağlantısı 
     const conn = await mongoose.connect(dbUri, options);
 
     console.log(`MongoDB bağlantısı başarılı: ${conn.connection.host}`);
