@@ -69,21 +69,29 @@ export default function RideDetailScreen() {
     }
   };
 
-  // Handle booking
+  // Handle booking - now redirects to ride-join page
   const handleBooking = () => {
+    router.push({
+      pathname: '/ride-join',
+      params: { id: ride.id, seats: selectedSeats }
+    } as any);
+  };
+
+  // Alt olarak doğrudan sürücüye mesaj gönderme
+  const handleContactDriver = () => {
     Alert.alert(
-      "Rezervasyon Onayı",
-      `${ride.startLocation} - ${ride.endLocation} yolculuğu için ${selectedSeats} koltuk rezerve etmek istediğinize emin misiniz? Toplam tutar: ${selectedSeats * ride.price} TL`,
+      "Sürücü İle İletişim",
+      "Yolculuk hakkında soru sormak için sürücü ile iletişime geçebilirsiniz.",
       [
         {
           text: "İptal",
           style: "cancel"
         },
         { 
-          text: "Onayla", 
+          text: "Mesaj Gönder", 
           onPress: () => {
-            Alert.alert("Başarılı", "Rezervasyonunuz başarıyla alınmıştır.");
-            router.back();
+            // Chat ekranına yönlendirilecek
+            Alert.alert("Bilgi", "Mesaj özelliği yakında eklenecektir.");
           } 
         }
       ]
@@ -169,7 +177,10 @@ export default function RideDetailScreen() {
                 <Text style={styles.totalRides}>({ride.driver.totalRides} Yolculuk)</Text>
               </View>
             </View>
-            <TouchableOpacity style={styles.contactButton}>
+            <TouchableOpacity 
+              style={styles.contactButton}
+              onPress={handleContactDriver}
+            >
               <FontAwesome5 name="comment" size={16} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
@@ -269,7 +280,16 @@ export default function RideDetailScreen() {
             style={styles.bookButton}
             onPress={handleBooking}
           >
-            <Text style={styles.bookButtonText}>Rezervasyon Yap</Text>
+            <FontAwesome5 name="check-circle" size={16} color="#FFFFFF" solid style={styles.bookButtonIcon} />
+            <Text style={styles.bookButtonText}>Yolculuğa Katıl</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.infoButton}
+            onPress={handleContactDriver}
+          >
+            <FontAwesome5 name="question-circle" size={16} color={colors.text} solid style={styles.infoButtonIcon} />
+            <Text style={styles.infoButtonText}>Yolculuk Hakkında Soru Sor</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -529,14 +549,38 @@ const styles = StyleSheet.create({
     color: colors.primary,
   },
   bookButton: {
+    flexDirection: 'row',
     backgroundColor: colors.primary,
     padding: 16,
     borderRadius: 10,
     alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
   },
   bookButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  bookButtonIcon: {
+    marginRight: 10,
+  },
+  infoButton: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    padding: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  infoButtonText: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  infoButtonIcon: {
+    marginRight: 10,
   },
 }); 
