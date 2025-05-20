@@ -8,143 +8,170 @@ import {
   TouchableOpacity,
   Alert,
   Platform,
-  ActivityIndicator
+  ActivityIndicator,
+  Dimensions
 } from 'react-native';
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { FontAwesome5 } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { colors } from '../_layout';
+import axios from 'axios';
 
-// Araç detayı veri modeli
-interface VehicleDetail {
-  id: string;
-  brand: string;
-  model: string;
-  year: number;
-  images: string[];
-  price: number;
-  location: string;
-  owner: {
-    id: string;
-    name: string;
-    rating: number;
-    photo: string;
+// API URL
+const API_URL = 'http://localhost:3000/api';
+const { width } = Dimensions.get('window');
+
+interface Vehicle {
+  id?: string;
+  _id?: string;
+  brand?: string;
+  model?: string;
+  year?: number;
+  dailyPrice?: number;
+  pricePerDay?: number;
+  dailyRate?: number;
+  location?: string;
+  transmission?: string;
+  fuelType?: string;
+  description?: string;
+  owner?: {
+    id?: string;
+    name?: string;
+    avatar?: string;
+    rating?: number;
   };
-  features: string[];
-  description: string;
+  images?: string[];
+  rating?: number;
+  reviewCount?: number;
+  plateNumber?: string;
+  features?: string[];
 }
 
-// Kullanıcı doğrulama bilgisi
-interface UserVerification {
-  isIdentityVerified: boolean;
-  isDrivingLicenseVerified: boolean;
-}
-
-export default function VehicleDetailScreen() {
-  const params = useLocalSearchParams();
+const VehicleDetailScreen = () => {
+  const { id } = useLocalSearchParams();
   const router = useRouter();
-  const vehicleId = params.id as string;
-
-  const [vehicle, setVehicle] = useState<VehicleDetail | null>(null);
+  const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedImage, setSelectedImage] = useState(0);
-  const [isFavorite, setIsFavorite] = useState(false);
-  const [userVerification, setUserVerification] = useState<UserVerification>({
-    isIdentityVerified: false,
-    isDrivingLicenseVerified: false
-  });
+  const [error, setError] = useState<string | null>(null);
+  
+  const [isDatePickerVisible, setDatePickerVisibility] = useState(false);
+  const [isEndDatePickerVisible, setEndDatePickerVisibility] = useState(false);
+  const [startDate, setStartDate] = useState<Date | null>(null);
+  const [endDate, setEndDate] = useState<Date | null>(null);
+  const [totalDays, setTotalDays] = useState(0);
 
-  // Araç ve kullanıcı doğrulama bilgilerini getirme
   useEffect(() => {
-    // Gerçek uygulamada API'den veri çekme işlemi burada yapılır
-    
-    // Örnek araç verisi
-    setTimeout(() => {
-      setVehicle({
-        id: vehicleId,
-        brand: 'BMW',
-        model: '3.20i',
-        year: 2021,
-        images: [
-          'https://via.placeholder.com/800x450',
-          'https://via.placeholder.com/800x450',
-          'https://via.placeholder.com/800x450'
-        ],
-        price: 750,
-        location: 'İstanbul, Kadıköy',
-        owner: {
-          id: 'owner1',
-          name: 'Ahmet Yılmaz',
-          rating: 4.8,
-          photo: 'https://randomuser.me/api/portraits/men/32.jpg'
-        },
-        features: [
-          'Otomatik Vites',
-          'Dizel',
-          'Klima',
-          'Bluetooth',
-          'Navigasyon',
-          'Deri Koltuk'
-        ],
-        description: 'Düzenli bakımları yapılmış, temiz ve ekonomik bir araç. İş seyahatleri ve günlük kullanım için idealdir. Geniş bagaj hacmi ile tatil için de uygun.'
-      });
+    fetchVehicleDetails();
+  }, [id]);
+
+  const fetchVehicleDetails = async () => {
+    try {
+      setLoading(true);
+      console.log(`Araç detayları yükleniyor... ID: ${id}`);
       
-      // Örnek kullanıcı doğrulama bilgisi
-      // Gerçek uygulamada API'den alınır
-      setUserVerification({
-        isIdentityVerified: true,
-        isDrivingLicenseVerified: false // Ehliyet doğrulama durumu
-      });
+      const response = await axios.get(`${API_URL}/vehicles/${id}`);
+      console.log('API yanıtı:', response.data);
       
+      let vehicleData: Vehicle | null = null;
+      
+      // API yanıt formatını kontrol et
+      if (response.data && response.data.status === 'success' && response.data.data && response.data.data.vehicle) {
+        // { status: 'success', data: { vehicle: {} } }
+        vehicleData = response.data.data.vehicle;
+      } else if (response.data && response.data.vehicle) {
+        // { vehicle: {} }
+        vehicleData = response.data.vehicle;
+      } else if (response.data && !response.data.status) {
+        // Doğrudan obje: {}
+        vehicleData = response.data;
+      } else {
+        console.warn('Bilinmeyen API yanıt formatı:', response.data);
+        vehicleData = null;
+      }
+      
+      // Varsayılan özellikler ekle
+      if (vehicleData) {
+        if (!vehicleData.features) {
+          vehicleData.features = [
+            vehicleData.transmission || 'Vites tipi belirtilmemiş',
+            vehicleData.fuelType || 'Yakıt tipi belirtilmemiş',
+            `Yıl: ${vehicleData.year || 'Belirtilmemiş'}`,
+          ];
+        }
+        
+        if (!vehicleData.owner) {
+          vehicleData.owner = {
+            name: 'Araç Sahibi',
+            rating: 4.5
+          };
+        }
+        
+        if (!vehicleData.rating) {
+          vehicleData.rating = 4.2;
+        }
+        
+        if (!vehicleData.reviewCount) {
+          vehicleData.reviewCount = 0;
+        }
+      }
+      
+      setVehicle(vehicleData);
+      setError(null);
+    } catch (err) {
+      console.error('Araç detaylarını getirirken hata oluştu:', err);
+      setError('Araç detayları yüklenirken bir sorun oluştu. Lütfen daha sonra tekrar deneyin.');
+    } finally {
       setLoading(false);
-    }, 1000);
-  }, [vehicleId]);
-
-  // Date picker state
-  const [showStartDate, setShowStartDate] = useState(false);
-  const [showEndDate, setShowEndDate] = useState(false);
-  const [startDate, setStartDate] = useState(new Date());
-  const [endDate, setEndDate] = useState(new Date(new Date().setDate(new Date().getDate() + 3)));
-  const [totalDays, setTotalDays] = useState(3);
-
-  // Show date picker
-  const showStartDatepicker = () => {
-    setShowStartDate(true);
+    }
   };
 
-  const showEndDatepicker = () => {
-    setShowEndDate(true);
+  const showDatePicker = () => {
+    setDatePickerVisibility(true);
   };
 
-  // Handle date changes
-  const onStartDateChange = (event: any, selectedDate?: Date) => {
-    const currentDate = selectedDate || startDate;
-    setShowStartDate(Platform.OS === 'ios');
-    setStartDate(currentDate);
-    calculateTotalDays(currentDate, endDate);
+  const hideDatePicker = () => {
+    setDatePickerVisibility(false);
   };
 
-  const onEndDateChange = (event: any, selectedDate?: Date) => {
-    const currentDate = selectedDate || endDate;
-    setShowEndDate(Platform.OS === 'ios');
-    setEndDate(currentDate);
-    calculateTotalDays(startDate, currentDate);
+  const showEndDatePicker = () => {
+    setEndDatePickerVisibility(true);
   };
 
-  // Calculate total days
-  const calculateTotalDays = (start: Date, end: Date) => {
-    const diffTime = Math.abs(end.getTime() - start.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    setTotalDays(diffDays);
+  const hideEndDatePicker = () => {
+    setEndDatePickerVisibility(false);
   };
 
-  // Handle booking
-  const handleBooking = () => {
-    const totalPrice = totalDays * (vehicle?.price || 0);
+  const handleDateConfirm = (date: Date) => {
+    setStartDate(date);
+    hideDatePicker();
+    updateTotalDays(date, endDate);
+  };
 
+  const handleEndDateConfirm = (date: Date) => {
+    setEndDate(date);
+    hideEndDatePicker();
+    updateTotalDays(startDate, date);
+  };
+
+  const updateTotalDays = (start: Date | null, end: Date | null) => {
+    if (start && end) {
+      const diffTime = Math.abs(end.getTime() - start.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      setTotalDays(diffDays);
+    }
+  };
+
+  const handleBookNow = () => {
+    if (!startDate || !endDate) {
+      Alert.alert("Hata", "Lütfen başlangıç ve bitiş tarihlerini seçin.");
+      return;
+    }
+    
+    const price = vehicle?.dailyPrice || vehicle?.pricePerDay || vehicle?.dailyRate || 0;
+    
     Alert.alert(
       "Rezervasyon Onayı",
-      `${vehicle?.brand} ${vehicle?.model} aracını ${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()} tarihleri arasında kiralamak istediğinize emin misiniz? Toplam tutar: ${totalPrice} TL`,
+      `${vehicle?.brand} ${vehicle?.model} aracını ${totalDays} gün için kiralamak istiyor musunuz? Toplam ücret: ₺${price * totalDays}`,
       [
         {
           text: "İptal",
@@ -153,100 +180,44 @@ export default function VehicleDetailScreen() {
         { 
           text: "Onayla", 
           onPress: () => {
-            Alert.alert("Başarılı", "Rezervasyonunuz başarıyla alınmıştır.");
-            router.back();
-          } 
+            router.push({
+              pathname: '/ride/create',
+              params: { 
+                vehicleId: vehicle?.id || vehicle?._id,
+                startDate: startDate.toISOString(),
+                endDate: endDate.toISOString(),
+                totalDays: totalDays.toString(),
+                totalPrice: (price * totalDays).toString()
+              }
+            } as any);
+          }
         }
       ]
     );
   };
 
-  // Get icon for feature
+  const formatDate = (date: Date) => {
+    if (!date) return "Seçiniz";
+    return date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
+  };
+
   const getFeatureIcon = (feature: string) => {
-    const iconMap: {[key: string]: string} = {
-      'Klima': 'snowflake',
-      'Bluetooth': 'bluetooth',
-      'Deri Koltuk': 'couch',
-      'Navigasyon': 'map-marked-alt',
-      'Geri Görüş Kamerası': 'camera',
-      'Sunroof': 'sun',
-      'ABS': 'car-crash',
-      'Çocuk Koltuğu': 'baby',
-      'USB': 'usb'
-    };
-    return iconMap[feature] || 'check-circle';
+    if (feature.toLowerCase().includes('otomatik') || feature.toLowerCase().includes('vites')) return 'cog';
+    if (feature.toLowerCase().includes('benzin') || feature.toLowerCase().includes('dizel') || feature.toLowerCase().includes('yakıt')) return 'gas-pump';
+    if (feature.toLowerCase().includes('koltuk') || feature.toLowerCase().includes('yolcu')) return 'chair';
+    if (feature.toLowerCase().includes('klima')) return 'snowflake';
+    if (feature.toLowerCase().includes('bluetooth')) return 'bluetooth-b';
+    if (feature.toLowerCase().includes('usb')) return 'usb';
+    if (feature.toLowerCase().includes('gps') || feature.toLowerCase().includes('navigasyon')) return 'map-marker-alt';
+    if (feature.toLowerCase().includes('yıl')) return 'calendar-alt';
+    return 'check-circle';
   };
-
-  // Favorilere ekleme/çıkarma işlemi
-  const toggleFavorite = () => {
-    setIsFavorite(!isFavorite);
-    
-    // Gerçek uygulamada API çağrısı burada yapılır
-    if (!isFavorite) {
-      Alert.alert('Bilgi', 'Araç favorilerinize eklendi.');
-    }
-  };
-  
-  // Kiralama işlemi
-  const handleRent = () => {
-    // Kullanıcı doğrulama kontrolü
-    if (!userVerification.isIdentityVerified || !userVerification.isDrivingLicenseVerified) {
-      Alert.alert(
-        'Doğrulama Gerekli',
-        'Araç kiralayabilmek için kimlik ve ehliyet bilgilerinizi doğrulamanız gerekmektedir.',
-        [
-          {
-            text: 'Vazgeç',
-            style: 'cancel'
-          },
-          {
-            text: 'Doğrulama Yap',
-            onPress: () => router.push('/identity-verification' as any)
-          }
-        ]
-      );
-      return;
-    }
-    
-    // Doğrulama tamamlanmışsa kiralama sayfasına yönlendir
-    router.push(`/rent/${vehicleId}` as any);
-  };
-  
-  // Araba sahibiyle iletişim
-  const contactOwner = () => {
-    // Gerçek uygulamada mesajlaşma veya iletişim sayfasına yönlendirilir
-    Alert.alert('Bilgi', 'Mesajlaşma özelliği yakında eklenecektir.');
-  };
-
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.loadingText}>Araç bilgileri yükleniyor...</Text>
-      </View>
-    );
-  }
-  
-  if (!vehicle) {
-    return (
-      <View style={styles.errorContainer}>
-        <FontAwesome5 name="exclamation-circle" size={50} color={colors.primary} />
-        <Text style={styles.errorText}>Araç bilgileri bulunamadı.</Text>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <Text style={styles.backButtonText}>Geri Dön</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
 
   return (
-    <View style={styles.container}>
+    <>
       <Stack.Screen
         options={{
-          title: `${vehicle.brand} ${vehicle.model}`,
+          title: vehicle ? `${vehicle.brand} ${vehicle.model}` : 'Araç Detayı',
           headerStyle: {
             backgroundColor: colors.background,
           },
@@ -254,358 +225,331 @@ export default function VehicleDetailScreen() {
         }}
       />
       
-      <ScrollView>
-        {/* Araç Görselleri */}
-        <View style={styles.imageContainer}>
-          <Image 
-            source={{ uri: vehicle.images[selectedImage] }} 
-            style={styles.mainImage} 
-          />
-          
-          <View style={styles.thumbnailsContainer}>
-            {vehicle.images.map((image, index) => (
-              <TouchableOpacity
-                key={index}
-                onPress={() => setSelectedImage(index)}
-                style={[
-                  styles.thumbnailButton,
-                  selectedImage === index && styles.selectedThumbnail
-                ]}
-              >
-                <Image 
-                  source={{ uri: image }} 
-                  style={styles.thumbnailImage} 
-                />
-              </TouchableOpacity>
-            ))}
-          </View>
-          
-          <TouchableOpacity 
-            style={styles.favoriteButton}
-            onPress={toggleFavorite}
-          >
-            <FontAwesome5 
-              name="heart" 
-              size={24} 
-              color={isFavorite ? '#FF6B6B' : 'rgba(255,255,255,0.8)'} 
-              solid={isFavorite}
-            />
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#ff4500" />
+          <Text style={styles.loadingText}>Araç detayları yükleniyor...</Text>
+        </View>
+      ) : error ? (
+        <View style={styles.errorContainer}>
+          <FontAwesome5 name="exclamation-circle" size={50} color="#ff6b6b" />
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={fetchVehicleDetails}>
+            <Text style={styles.retryButtonText}>Tekrar Dene</Text>
           </TouchableOpacity>
         </View>
-        
-        {/* Araç Bilgileri */}
-        <View style={styles.infoContainer}>
-          <View style={styles.header}>
-            <View>
-              <Text style={styles.brand}>{vehicle.brand} {vehicle.model}</Text>
-              <Text style={styles.year}>{vehicle.year}</Text>
+      ) : vehicle ? (
+        <ScrollView style={styles.container}>
+          <View style={styles.imageContainer}>
+            {/* Varsayılan placeholder görseli */}
+            <View style={styles.placeholderImage}>
+              <Text style={styles.placeholderText}>{vehicle.brand ? vehicle.brand[0] : 'A'}</Text>
             </View>
-            <View style={styles.priceContainer}>
-              <Text style={styles.priceLabel}>Günlük</Text>
-              <Text style={styles.price}>{vehicle.price} TL</Text>
+            
+            <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+              <FontAwesome5 name="arrow-left" size={18} color="#FFFFFF" />
+            </TouchableOpacity>
+            
+            <View style={styles.priceTag}>
+              <Text style={styles.priceText}>₺{vehicle.dailyPrice || vehicle.pricePerDay || vehicle.dailyRate || 0}</Text>
+              <Text style={styles.priceUnit}>/gün</Text>
             </View>
           </View>
-          
-          {/* Location */}
-          <View style={styles.locationContainer}>
-            <FontAwesome5 name="map-marker-alt" size={16} color={colors.primary} />
-            <Text style={styles.location}>{vehicle.location}</Text>
-          </View>
-          
-          {/* Owner Info */}
-          <View style={styles.ownerContainer}>
-            <Image 
-              source={{ uri: vehicle.owner.photo }} 
-              style={styles.ownerPhoto}
-            />
-            <View style={styles.ownerInfo}>
-              <Text style={styles.ownerName}>{vehicle.owner.name}</Text>
+
+          <View style={styles.contentContainer}>
+            <View style={styles.header}>
+              <View>
+                <Text style={styles.vehicleName}>{vehicle.brand} {vehicle.model}</Text>
+                <Text style={styles.vehicleModel}>Yıl: {vehicle.year}</Text>
+              </View>
               <View style={styles.ratingContainer}>
-                <FontAwesome5 name="star" solid size={14} color="#FFD700" />
-                <Text style={styles.rating}>{vehicle.owner.rating}</Text>
+                <FontAwesome5 name="star" solid size={16} color="#FFD700" />
+                <Text style={styles.ratingText}>{vehicle.rating?.toFixed(1)}</Text>
+                <Text style={styles.reviewCount}>
+                  ({vehicle.reviewCount} değerlendirme)
+                </Text>
               </View>
             </View>
-            <TouchableOpacity 
-              style={styles.contactButton}
-              onPress={contactOwner}
-            >
-              <FontAwesome5 name="comment" size={14} color="#FFFFFF" />
-              <Text style={styles.contactButtonText}>İletişim</Text>
-            </TouchableOpacity>
-          </View>
-          
-          {/* Vehicle Features */}
-          <View style={styles.section}>
+
+            <View style={styles.locationContainer}>
+              <FontAwesome5 name="map-marker-alt" size={16} color="#FF5A5F" />
+              <Text style={styles.locationText}>
+                {vehicle.location || 'Konum belirtilmemiş'}
+              </Text>
+            </View>
+
+            {vehicle.plateNumber && (
+              <View style={styles.plateContainer}>
+                <FontAwesome5 name="car" size={16} color="#4A90E2" />
+                <Text style={styles.plateText}>{vehicle.plateNumber}</Text>
+              </View>
+            )}
+
+            <View style={styles.divider} />
+
             <Text style={styles.sectionTitle}>Araç Özellikleri</Text>
             <View style={styles.featuresContainer}>
-              {vehicle.features.map((feature, index) => (
+              {vehicle.features?.map((feature, index) => (
                 <View key={index} style={styles.featureItem}>
-                  <FontAwesome5 name={getFeatureIcon(feature)} size={16} color={colors.primary} solid />
+                  <FontAwesome5 name={getFeatureIcon(feature)} size={16} color="#4A90E2" />
                   <Text style={styles.featureText}>{feature}</Text>
                 </View>
               ))}
             </View>
-          </View>
-          
-          {/* Vehicle Description */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Araç Hakkında</Text>
-            <Text style={styles.description}>{vehicle.description}</Text>
-          </View>
-          
-          {/* Doğrulama Bilgisi */}
-          {(!userVerification.isIdentityVerified || !userVerification.isDrivingLicenseVerified) && (
-            <View style={styles.verificationWarning}>
-              <FontAwesome5 name="exclamation-triangle" size={20} color="#FF9800" />
-              <Text style={styles.verificationText}>
-                Araç kiralayabilmek için kimlik ve ehliyet bilgilerinizi doğrulamanız gerekmektedir.
-              </Text>
+
+            {vehicle.description && (
+              <>
+                <View style={styles.divider} />
+                <Text style={styles.sectionTitle}>Açıklama</Text>
+                <Text style={styles.descriptionText}>
+                  {vehicle.description}
+                </Text>
+              </>
+            )}
+
+            <View style={styles.divider} />
+
+            <Text style={styles.sectionTitle}>Tarih Seçin</Text>
+            <View style={styles.datePickerContainer}>
               <TouchableOpacity 
-                style={styles.verifyButton}
-                onPress={() => router.push('/identity-verification' as any)}
+                style={styles.datePickerButton} 
+                onPress={showDatePicker}
               >
-                <Text style={styles.verifyButtonText}>Doğrulama Yap</Text>
+                <FontAwesome5 name="calendar-alt" size={18} color="#4A90E2" />
+                <Text style={styles.datePickerText}>
+                  {startDate ? formatDate(startDate) : "Başlangıç Tarihi"}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.datePickerButton}
+                onPress={showEndDatePicker}
+              >
+                <FontAwesome5 name="calendar-alt" size={18} color="#4A90E2" />
+                <Text style={styles.datePickerText}>
+                  {endDate ? formatDate(endDate) : "Bitiş Tarihi"}
+                </Text>
               </TouchableOpacity>
             </View>
-          )}
-          
-          {/* Booking Section */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Rezervasyon</Text>
-            
-            <View style={styles.dateSelectContainer}>
-              <TouchableOpacity 
-                style={styles.dateSelect} 
-                onPress={showStartDatepicker}
-              >
-                <FontAwesome5 name="calendar-alt" size={16} color={colors.primary} />
-                <View>
-                  <Text style={styles.dateLabel}>Alış Tarihi</Text>
-                  <Text style={styles.dateValue}>{startDate.toLocaleDateString()}</Text>
+
+            <DateTimePickerModal
+              isVisible={isDatePickerVisible}
+              mode="date"
+              minimumDate={new Date()}
+              onConfirm={handleDateConfirm}
+              onCancel={hideDatePicker}
+            />
+
+            <DateTimePickerModal
+              isVisible={isEndDatePickerVisible}
+              mode="date"
+              minimumDate={startDate || new Date()}
+              onConfirm={handleEndDateConfirm}
+              onCancel={hideEndDatePicker}
+            />
+
+            {totalDays > 0 && (
+              <View style={styles.summaryContainer}>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryText}>
+                    Günlük ücret
+                  </Text>
+                  <Text style={styles.summaryValue}>
+                    ₺{vehicle.dailyPrice || vehicle.pricePerDay || vehicle.dailyRate || 0}
+                  </Text>
                 </View>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={styles.dateSelect} 
-                onPress={showEndDatepicker}
-              >
-                <FontAwesome5 name="calendar-alt" size={16} color={colors.primary} />
-                <View>
-                  <Text style={styles.dateLabel}>Teslim Tarihi</Text>
-                  <Text style={styles.dateValue}>{endDate.toLocaleDateString()}</Text>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryText}>
+                    Toplam gün
+                  </Text>
+                  <Text style={styles.summaryValue}>
+                    {totalDays} gün
+                  </Text>
                 </View>
-              </TouchableOpacity>
-            </View>
-            
-            <View style={styles.totalContainer}>
-              <View>
-                <Text style={styles.totalLabel}>Toplam</Text>
-                <Text style={styles.totalDays}>{totalDays} gün</Text>
+                <View style={[styles.summaryRow, styles.totalRow]}>
+                  <Text style={styles.totalText}>
+                    Toplam
+                  </Text>
+                  <Text style={styles.totalValue}>
+                    ₺{(vehicle.dailyPrice || vehicle.pricePerDay || vehicle.dailyRate || 0) * totalDays}
+                  </Text>
+                </View>
               </View>
-              <Text style={styles.totalPrice}>{totalDays * vehicle.price} TL</Text>
-            </View>
-            
+            )}
+
             <TouchableOpacity 
-              style={[
-                styles.bookButton,
-                (!userVerification.isIdentityVerified || !userVerification.isDrivingLicenseVerified) && styles.disabledButton
-              ]}
-              onPress={handleRent}
+              style={styles.bookButton}
+              onPress={handleBookNow}
+              disabled={!startDate || !endDate}
             >
-              <FontAwesome5 name="car" size={18} color="#FFFFFF" />
               <Text style={styles.bookButtonText}>Hemen Kirala</Text>
             </TouchableOpacity>
           </View>
+        </ScrollView>
+      ) : (
+        <View style={styles.errorContainer}>
+          <FontAwesome5 name="car" size={50} color="#ccc" />
+          <Text style={styles.errorText}>Araç bulunamadı</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={() => router.back()}>
+            <Text style={styles.retryButtonText}>Geri Dön</Text>
+          </TouchableOpacity>
         </View>
-      </ScrollView>
-
-      {/* Date Pickers */}
-      {showStartDate && (
-        <DateTimePicker
-          value={startDate}
-          mode="date"
-          is24Hour={true}
-          display="default"
-          onChange={onStartDateChange}
-          minimumDate={new Date()}
-        />
       )}
-      
-      {showEndDate && (
-        <DateTimePicker
-          value={endDate}
-          mode="date"
-          is24Hour={true}
-          display="default"
-          onChange={onEndDateChange}
-          minimumDate={new Date(startDate.getTime() + 86400000)}
-        />
-      )}
-    </View>
+    </>
   );
-}
+};
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: '#f8f8f8',
   },
   loadingContainer: {
     flex: 1,
-    alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.background,
-    padding: 20,
+    alignItems: 'center',
+    backgroundColor: '#f8f8f8',
   },
   loadingText: {
     marginTop: 10,
-    color: colors.text,
-    fontSize: 16,
+    color: '#333',
   },
   errorContainer: {
     flex: 1,
-    alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.background,
+    alignItems: 'center',
+    backgroundColor: '#f8f8f8',
     padding: 20,
   },
   errorText: {
+    color: '#333',
+    textAlign: 'center',
     marginTop: 10,
     marginBottom: 20,
-    color: colors.text,
-    fontSize: 16,
   },
-  backButton: {
-    backgroundColor: colors.primary,
-    paddingVertical: 10,
+  retryButton: {
+    backgroundColor: '#ff4500',
     paddingHorizontal: 20,
+    paddingVertical: 10,
     borderRadius: 8,
   },
-  backButtonText: {
-    color: '#FFFFFF',
+  retryButtonText: {
+    color: '#fff',
     fontWeight: 'bold',
   },
   imageContainer: {
-    position: 'relative',
-  },
-  mainImage: {
     width: '100%',
     height: 250,
-    resizeMode: 'cover',
+    position: 'relative',
   },
-  thumbnailsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    padding: 10,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-  },
-  thumbnailButton: {
-    width: 60,
-    height: 40,
-    marginHorizontal: 5,
-    borderRadius: 4,
-    opacity: 0.7,
-  },
-  selectedThumbnail: {
-    opacity: 1,
-    borderWidth: 2,
-    borderColor: colors.primary,
-  },
-  thumbnailImage: {
+  placeholderImage: {
     width: '100%',
     height: '100%',
-    borderRadius: 4,
-  },
-  favoriteButton: {
-    position: 'absolute',
-    top: 15,
-    right: 15,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
+    backgroundColor: '#e0e0e0',
     justifyContent: 'center',
+    alignItems: 'center',
   },
-  infoContainer: {
-    padding: 16,
+  placeholderText: {
+    fontSize: 80,
+    fontWeight: 'bold',
+    color: '#757575',
+  },
+  backButton: {
+    position: 'absolute',
+    top: 40,
+    left: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  priceTag: {
+    position: 'absolute',
+    bottom: 20,
+    right: 20,
+    backgroundColor: '#ff4500',
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  priceText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  priceUnit: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    marginLeft: 2,
+  },
+  contentContainer: {
+    padding: 20,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
+    alignItems: 'center',
+    marginBottom: 15,
   },
-  brand: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: colors.text,
-  },
-  year: {
-    fontSize: 16,
-    color: 'rgba(255,255,255,0.7)',
-  },
-  priceContainer: {
-    alignItems: 'flex-end',
-  },
-  priceLabel: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.7)',
-  },
-  price: {
+  vehicleName: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: colors.primary,
+    color: '#333',
   },
-  locationContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  location: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.8)',
-    marginLeft: 6,
-  },
-  ownerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-    padding: 12,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 10,
-  },
-  ownerPhoto: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    marginRight: 12,
-  },
-  ownerInfo: {
-    flex: 1,
-  },
-  ownerName: {
+  vehicleModel: {
     fontSize: 16,
-    fontWeight: '500',
-    color: colors.text,
-    marginBottom: 4,
+    color: '#666',
+    marginTop: 3,
   },
   ratingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  rating: {
-    marginLeft: 4,
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.8)',
+  ratingText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginLeft: 5,
   },
-  section: {
-    marginBottom: 20,
+  reviewCount: {
+    fontSize: 14,
+    color: '#666',
+    marginLeft: 4,
+  },
+  locationContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  locationText: {
+    fontSize: 14,
+    color: '#666',
+    marginLeft: 8,
+  },
+  plateContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  plateText: {
+    fontSize: 14,
+    color: '#666',
+    marginLeft: 8,
+    fontWeight: '600',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#e0e0e0',
+    marginVertical: 15,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: colors.text,
+    color: '#333',
     marginBottom: 12,
   },
   featuresContainer: {
@@ -615,118 +559,93 @@ const styles = StyleSheet.create({
   featureItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
+    backgroundColor: '#f0f0f0',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: 20,
-    marginRight: 8,
-    marginBottom: 8,
+    marginRight: 10,
+    marginBottom: 10,
   },
   featureText: {
+    fontSize: 14,
+    color: '#666',
     marginLeft: 6,
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.9)',
   },
-  description: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: 'rgba(255,255,255,0.8)',
+  descriptionText: {
+    fontSize: 15,
+    color: '#666',
+    lineHeight: 22,
   },
-  dateSelectContainer: {
+  datePickerContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  dateSelect: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    padding: 12,
-    borderRadius: 10,
-    width: '48%',
-  },
-  dateLabel: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.7)',
-    marginLeft: 8,
-  },
-  dateValue: {
-    fontSize: 14,
-    color: colors.text,
-    marginLeft: 8,
-  },
-  totalContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     marginBottom: 20,
-    paddingVertical: 12,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
   },
-  totalLabel: {
+  datePickerButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0f0f0',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    marginHorizontal: 5,
+  },
+  datePickerText: {
+    marginLeft: 8,
     fontSize: 14,
-    color: 'rgba(255,255,255,0.7)',
+    color: '#333',
   },
-  totalDays: {
-    fontSize: 16,
+  summaryContainer: {
+    backgroundColor: '#f0f0f0',
+    padding: 15,
+    borderRadius: 8,
+    marginBottom: 20,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  summaryText: {
+    fontSize: 14,
+    color: '#666',
+  },
+  summaryValue: {
+    fontSize: 14,
+    color: '#333',
     fontWeight: '500',
-    color: colors.text,
   },
-  totalPrice: {
-    fontSize: 22,
+  totalRow: {
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+    paddingTop: 10,
+    marginTop: 5,
+    marginBottom: 0,
+  },
+  totalText: {
+    fontSize: 16,
     fontWeight: 'bold',
-    color: colors.primary,
+    color: '#333',
+  },
+  totalValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#ff4500',
   },
   bookButton: {
-    backgroundColor: colors.primary,
-    padding: 16,
-    borderRadius: 10,
+    backgroundColor: '#ff4500',
+    paddingVertical: 15,
+    borderRadius: 8,
     alignItems: 'center',
+    marginTop: 20,
   },
   bookButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: 'bold',
   },
-  verificationWarning: {
-    backgroundColor: 'rgba(255, 152, 0, 0.1)',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 20,
-    alignItems: 'center',
-  },
-  verificationText: {
-    textAlign: 'center',
-    color: colors.text,
-    marginVertical: 10,
-    lineHeight: 20,
-  },
-  verifyButton: {
-    backgroundColor: '#FF9800',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 4,
-  },
-  verifyButtonText: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-  },
-  disabledButton: {
-    backgroundColor: 'rgba(255,69,0,0.5)',
-  },
-  contactButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.secondary,
-    borderRadius: 4,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-  },
-  contactButtonText: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-    marginLeft: 4,
-  },
-}); 
+});
+
+export default VehicleDetailScreen; 

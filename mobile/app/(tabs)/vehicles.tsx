@@ -1,43 +1,36 @@
-import React from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { colors } from '../_layout';
 import { FontAwesome5 } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import axios from 'axios';
+import { router } from 'expo-router';
 
-// Örnek araç verileri
-const VEHICLES = [
-  { id: '1', brand: 'Toyota', model: 'Corolla', year: 2020, dailyPrice: 250, image: 'https://via.placeholder.com/150', location: 'İstanbul, Beşiktaş', transmission: 'Otomatik', fuelType: 'Benzin' },
-  { id: '2', brand: 'Honda', model: 'Civic', year: 2021, dailyPrice: 300, image: 'https://via.placeholder.com/150', location: 'İstanbul, Kadıköy', transmission: 'Otomatik', fuelType: 'Dizel' },
-  { id: '3', brand: 'Ford', model: 'Focus', year: 2019, dailyPrice: 200, image: 'https://via.placeholder.com/150', location: 'Ankara, Çankaya', transmission: 'Manuel', fuelType: 'Benzin' },
-  { id: '4', brand: 'Volkswagen', model: 'Golf', year: 2022, dailyPrice: 350, image: 'https://via.placeholder.com/150', location: 'İzmir, Karşıyaka', transmission: 'Otomatik', fuelType: 'Hibrit' },
-];
+// API URL
+const API_URL = 'http://localhost:3000/api';
 
-// Araç için tip tanımlaması
+// Vehicle type definition
 interface Vehicle {
-  id: string;
-  brand: string;
-  model: string;
-  year: number;
-  dailyPrice: number;
-  image: string;
-  location: string;
-  transmission: string;
-  fuelType: string;
+  id?: string;
+  _id?: string;
+  brand?: string;
+  model?: string;
+  year?: number;
+  dailyPrice?: number;
+  pricePerDay?: number;
+  dailyRate?: number;
+  location?: string;
+  transmission?: string;
+  fuelType?: string;
 }
 
 // Araç kartı bileşeni
-const VehicleCard = ({ vehicle }: { vehicle: Vehicle }) => {
-  const router = useRouter();
-  
+const VehicleCard = ({ vehicle, onPress }: { vehicle: Vehicle; onPress: () => void }) => {
   return (
-    <TouchableOpacity 
-      style={styles.card}
-      onPress={() => router.push(`/vehicle/${vehicle.id}`)}
-    >
+    <TouchableOpacity style={styles.card} onPress={onPress}>
       <View style={styles.imageContainer}>
         {/* Burada gerçek bir resim kullanabilirsiniz */}
         <View style={styles.placeholderImage}>
-          <Text style={styles.placeholderText}>{vehicle.brand[0]}</Text>
+          <Text style={styles.placeholderText}>{vehicle.brand ? vehicle.brand[0] : 'A'}</Text>
         </View>
       </View>
       <View style={styles.cardContent}>
@@ -46,39 +39,83 @@ const VehicleCard = ({ vehicle }: { vehicle: Vehicle }) => {
         
         <View style={styles.featureRow}>
           <View style={styles.feature}>
-            <FontAwesome5 name="map-marker-alt" size={12} color={colors.primary} />
-            <Text style={styles.featureText}>{vehicle.location}</Text>
+            <FontAwesome5 name="map-marker-alt" size={12} color={colors.textDark} />
+            <Text style={styles.featureText}>{vehicle.location || 'Konum bilgisi yok'}</Text>
           </View>
         </View>
         
         <View style={styles.featureRow}>
           <View style={styles.feature}>
-            <FontAwesome5 name="cog" size={12} color={colors.primary} />
-            <Text style={styles.featureText}>{vehicle.transmission}</Text>
+            <FontAwesome5 name="cog" size={12} color={colors.textDark} />
+            <Text style={styles.featureText}>{vehicle.transmission || 'Bilgi yok'}</Text>
           </View>
           
           <View style={styles.feature}>
-            <FontAwesome5 name="gas-pump" size={12} color={colors.primary} />
-            <Text style={styles.featureText}>{vehicle.fuelType}</Text>
+            <FontAwesome5 name="gas-pump" size={12} color={colors.textDark} />
+            <Text style={styles.featureText}>{vehicle.fuelType || 'Bilgi yok'}</Text>
           </View>
         </View>
         
-        <View style={styles.cardFooter}>
-          <Text style={styles.cardPrice}>{vehicle.dailyPrice} TL / gün</Text>
-          <TouchableOpacity 
-            style={styles.detailsButton}
-            onPress={() => router.push(`/vehicle/${vehicle.id}`)}
-          >
-            <Text style={styles.detailsButtonText}>Detaylar</Text>
-          </TouchableOpacity>
-        </View>
+        <Text style={styles.cardPrice}>{vehicle.dailyPrice || vehicle.pricePerDay || vehicle.dailyRate || 0} TL / gün</Text>
       </View>
     </TouchableOpacity>
   );
 };
 
 export default function VehiclesScreen() {
-  const [filterVisible, setFilterVisible] = React.useState(false);
+  const [filterVisible, setFilterVisible] = useState(false);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
+  useEffect(() => {
+    fetchVehicles();
+  }, []);
+
+  const fetchVehicles = async () => {
+    try {
+      setLoading(true);
+      console.log('Araçlar yükleniyor...');
+      
+      const response = await axios.get(`${API_URL}/vehicles`);
+      console.log('API yanıtı:', response.data);
+      
+      let vehicleData: Vehicle[] = [];
+      
+      // API yanıt formatını kontrol et
+      if (response.data && response.data.status === 'success' && response.data.data && Array.isArray(response.data.data.vehicles)) {
+        // { status: 'success', data: { vehicles: [] } }
+        vehicleData = response.data.data.vehicles;
+      } else if (response.data && Array.isArray(response.data.vehicles)) {
+        // { vehicles: [] }
+        vehicleData = response.data.vehicles;
+      } else if (response.data && Array.isArray(response.data)) {
+        // []
+        vehicleData = response.data;
+      } else if (response.data && response.data.data && Array.isArray(response.data.data)) {
+        // { data: [] }
+        vehicleData = response.data.data;
+      } else {
+        console.warn('Bilinmeyen API yanıt formatı:', response.data);
+        vehicleData = [];
+      }
+      
+      setVehicles(vehicleData);
+      setError(null);
+    } catch (err) {
+      console.error('Araçları getirirken hata oluştu:', err);
+      setError('Araçlar yüklenirken bir sorun oluştu. Lütfen daha sonra tekrar deneyin.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVehiclePress = (vehicle: Vehicle) => {
+    router.push({
+      pathname: '/vehicle/[id]',
+      params: { id: vehicle.id || vehicle._id }
+    });
+  };
   
   return (
     <View style={styles.container}>
@@ -96,12 +133,34 @@ export default function VehiclesScreen() {
         </TouchableOpacity>
       </View>
       
-      <FlatList
-        data={VEHICLES}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <VehicleCard vehicle={item} />}
-        contentContainerStyle={styles.list}
-      />
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Araçlar yükleniyor...</Text>
+        </View>
+      ) : error ? (
+        <View style={styles.errorContainer}>
+          <FontAwesome5 name="exclamation-circle" size={50} color="#ff6b6b" />
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={fetchVehicles}>
+            <Text style={styles.retryButtonText}>Tekrar Dene</Text>
+          </TouchableOpacity>
+        </View>
+      ) : vehicles.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <FontAwesome5 name="car" size={50} color="#ccc" />
+          <Text style={styles.emptyText}>Araç bulunamadı</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={vehicles}
+          keyExtractor={(item) => (item.id || item._id || Math.random().toString()) as string}
+          renderItem={({ item }) => <VehicleCard vehicle={item} onPress={() => handleVehiclePress(item)} />}
+          contentContainerStyle={styles.list}
+          refreshing={loading}
+          onRefresh={fetchVehicles}
+        />
+      )}
     </View>
   );
 }
@@ -144,19 +203,19 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: colors.card,
-    borderRadius: 12,
-    marginBottom: 16,
+    borderRadius: 8,
+    marginBottom: 15,
     overflow: 'hidden',
     flexDirection: 'row',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
-    elevation: 3,
+    elevation: 2,
   },
   imageContainer: {
-    width: 110,
-    height: 150,
+    width: 100,
+    height: 140,
   },
   placeholderImage: {
     width: '100%',
@@ -196,29 +255,53 @@ const styles = StyleSheet.create({
   },
   featureText: {
     fontSize: 12,
-    color: colors.textDark,
+    color: '#757575',
     marginLeft: 4,
-  },
-  cardFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 8,
   },
   cardPrice: {
     fontSize: 16,
     fontWeight: 'bold',
     color: colors.primary,
+    marginTop: 4,
   },
-  detailsButton: {
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 10,
+    color: colors.text,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorText: {
+    color: colors.textDark,
+    textAlign: 'center',
+    marginTop: 10,
+    marginBottom: 20,
+  },
+  retryButton: {
     backgroundColor: colors.primary,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
   },
-  detailsButtonText: {
-    color: '#FFFFFF',
+  retryButtonText: {
+    color: '#fff',
     fontWeight: 'bold',
-    fontSize: 12,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyText: {
+    color: colors.textDark,
+    marginTop: 10,
   },
 }); 
