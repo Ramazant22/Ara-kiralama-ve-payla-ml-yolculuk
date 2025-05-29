@@ -1,4 +1,4 @@
-# CarSharing Uygulaması
+# TakDrive Uygulaması
 
 Kullanıcıların kendi araçlarını kiralayabileceği ve paylaşımlı yolculuk özelliğinin bulunduğu web ve mobil uygulama.
 
