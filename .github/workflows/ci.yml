@@ -17,19 +17,17 @@ jobs:
           - 27017:27017
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     
     - name: Setup Node.js
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
         node-version: '18'
-        cache: 'npm'
-        cache-dependency-path: backend/package-lock.json
     
     - name: Install dependencies
       run: |
         cd backend
-        npm ci || npm install
+        npm install
     
     - name: Run tests
       run: |
@@ -48,24 +46,22 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     
     - name: Setup Node.js
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
         node-version: '18'
-        cache: 'npm'
-        cache-dependency-path: web/package-lock.json
     
     - name: Install dependencies
       run: |
         cd web
-        npm ci || npm install
+        npm install
     
     - name: Run tests
       run: |
         cd web
-        npm test -- --coverage --watchAll=false || echo "Tests completed"
+        CI=true npm test -- --coverage --watchAll=false
     
     - name: Run lint
       run: |
@@ -78,7 +74,7 @@ jobs:
         npm run build
     
     - name: Upload build artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: web-build
         path: web/build/
@@ -87,24 +83,24 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     
     - name: Setup Node.js
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
         node-version: '18'
-        cache: 'npm'
-        cache-dependency-path: mobile/package-lock.json
     
     - name: Install dependencies
       run: |
         cd mobile
-        npm ci || npm install
+        npm install
     
     - name: Check Expo project
       run: |
         cd mobile
         echo "Mobile project structure checked"
+        echo "Package.json exists: $(test -f package.json && echo 'Yes' || echo 'No')"
+        echo "Node modules installed: $(test -d node_modules && echo 'Yes' || echo 'No')"
     
     - name: Run lint (if available)
       run: |
