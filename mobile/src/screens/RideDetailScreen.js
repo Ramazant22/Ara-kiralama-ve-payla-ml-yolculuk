@@ -1,617 +1,598 @@
-import React, { useState } from 'react';
-import {
-  StyleSheet,
-  View,
-  Text,
-  Image,
-  ScrollView,
-  TouchableOpacity,
-  Alert,
+import React, { useState, useEffect } from 'react';
+import { 
+  View, 
+  StyleSheet, 
+  ScrollView, 
+  Alert 
 } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
-import Icon from 'react-native-vector-icons/FontAwesome5';
-import { useTheme } from '../context/ThemeContext';
+import { 
+  Text, 
+  Card, 
+  Button, 
+  Title,
+  Paragraph,
+  Chip,
+  ActivityIndicator,
+  Surface,
+  IconButton,
+  Divider
+} from 'react-native-paper';
+import { MaterialIcons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { rideService } from '../services/rideService';
+import { chatService } from '../services/chatService';
+import { useAuth } from '../hooks/useAuth';
+import { colors, spacing, borderRadius } from '../styles/theme';
 
-const RideDetailScreen = () => {
-  const navigation = useNavigation();
-  const route = useRoute();
-  const { theme } = useTheme();
-  const { ride } = route.params || {
-    ride: {
-      id: 1,
-      from: "İstanbul",
-      to: "Ankara",
-      date: "24 Kasım 2023",
-      time: "09:30",
-      price: 250,
-      seats: 3,
-      availableSeats: 2,
-      vehicle: {
-        name: "Honda Civic",
-        model: "2022",
-        image: require('../assets/vehicle1.jpg'),
-      },
-      driver: {
-        id: 1,
-        name: "Ali Yılmaz",
-        image: require('../assets/user1.jpg'),
-        rating: 4.9,
-        tripCount: 156,
-        memberSince: "Haziran 2021",
-        verified: true,
-      },
-      stops: [
-        { location: "Bolu", time: "11:30" },
-        { location: "Kırıkkale", time: "13:45" }
-      ],
-      preferences: ["Sigara içilmez", "Küçük bagaj", "Müzik açık"],
-      notes: "Ankara'da AŞTİ'de son bulacak yolculuk. Yolda kısa molalar vereceğiz. Bagaj konusunda sınırlı alan olduğunu lütfen dikkate alın."
+export default function RideDetailScreen({ route, navigation }) {
+  const { rideId } = route.params;
+  const { user } = useAuth();
+  const [ride, setRide] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    fetchRideDetail();
+  }, [rideId]);
+
+  const fetchRideDetail = async () => {
+    try {
+      setIsLoading(true);
+      const response = await rideService.getRide(rideId);
+      setRide(response.ride);
+    } catch (error) {
+      console.error('Yolculuk detayı yüklenirken hata:', error);
+      Alert.alert('Hata', 'Yolculuk detayı yüklenirken hata oluştu');
+      navigation.goBack();
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const [selectedSeats, setSelectedSeats] = useState(0);
-
-  const handleIncreaseSeats = () => {
-    if (selectedSeats < ride.availableSeats) {
-      setSelectedSeats(selectedSeats + 1);
-    }
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('tr-TR', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
   };
 
-  const handleDecreaseSeats = () => {
-    if (selectedSeats > 0) {
-      setSelectedSeats(selectedSeats - 1);
-    }
+  const formatPrice = (price) => {
+    return new Intl.NumberFormat('tr-TR', {
+      style: 'currency',
+      currency: 'TRY',
+      minimumFractionDigits: 0
+    }).format(price);
   };
 
-  const handleBookRide = () => {
-    if (selectedSeats === 0) {
-      Alert.alert("Hata", "Lütfen en az bir koltuk seçin.");
+  const handleJoinRide = () => {
+    if (ride.driver._id === user._id) {
+      Alert.alert('Uyarı', 'Kendi oluşturduğunuz yolculuğa katılamazsınız.');
       return;
     }
-    
-    Alert.alert(
-      "Rezervasyon Onayı",
-      `${ride.from} - ${ride.to} yolculuğu için ${selectedSeats} koltuk rezerve etmek istiyor musunuz? Toplam ücret: ₺${ride.price * selectedSeats}`,
-      [
-        {
-          text: "İptal",
-          style: "cancel"
-        },
-        { 
-          text: "Onayla", 
-          onPress: () => {
-            Alert.alert("Başarılı", "Rezervasyonunuz oluşturuldu. Sürücü tarafından onaylandığında bilgilendirileceksiniz.");
-            navigation.navigate('Home');
-          }
-        }
-      ]
-    );
+
+    if (ride.remainingSeats <= 0) {
+      Alert.alert('Uyarı', 'Bu yolculukta boş koltuk kalmamış');
+      return;
+    }
+
+    navigation.navigate('JoinRide', { ride });
   };
+
+  const handleContactDriver = async () => {
+    if (!user) {
+      Alert.alert('Giriş Gerekli', 'Mesaj göndermek için giriş yapmanız gerekiyor.');
+      return;
+    }
+
+    if (ride.driver._id === user._id) {
+      Alert.alert('Bilgi', 'Bu sizin yolculuğunuz');
+      return;
+    }
+
+    try {
+      // Konuşma başlat veya mevcut konuşmayı getir
+      const response = await chatService.startConversation(
+        ride.driver._id,
+        'ride_sharing',
+        {
+          title: `${ride.from.city} - ${ride.to.city} Yolculuğu`,
+          relatedTo: ride._id,
+          relatedModel: 'Ride'
+        }
+      );
+
+      // Chat ekranına yönlendir
+      navigation.navigate('Messages', {
+        screen: 'Chat',
+        params: {
+          conversationId: response.conversation._id,
+          otherUser: ride.driver,
+          conversationTitle: `${ride.from.city} - ${ride.to.city} Yolculuğu`
+        }
+      });
+
+    } catch (error) {
+      console.error('Konuşma başlatma hatası:', error);
+      Alert.alert('Hata', 'Mesajlaşma başlatılırken hata oluştu');
+    }
+  };
+
+  const conversationLevels = {
+    quiet: 'Sessiz',
+    moderate: 'Orta',
+    chatty: 'Sohbet'
+  };
+
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <IconButton
+            icon="arrow-left"
+            size={24}
+            iconColor={colors.text.primary}
+            onPress={() => navigation.goBack()}
+          />
+          <Title style={styles.headerTitle}>Yolculuk Detayı</Title>
+          <View style={{ width: 40 }} />
+        </View>
+        <View style={styles.centerContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Yolculuk detayı yükleniyor...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!ride) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <IconButton
+            icon="arrow-left"
+            size={24}
+            iconColor={colors.text.primary}
+            onPress={() => navigation.goBack()}
+          />
+          <Title style={styles.headerTitle}>Yolculuk Detayı</Title>
+          <View style={{ width: 40 }} />
+        </View>
+        <View style={styles.centerContainer}>
+          <MaterialIcons name="error" size={64} color={colors.error} />
+          <Title style={styles.emptyTitle}>Yolculuk Bulunamadı</Title>
+          <Text style={styles.emptyText}>Bu yolculuk silinmiş veya mevcut değil</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const isOwnRide = ride.driver._id === user._id;
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: theme.backgroundColor }]}>
+    <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <View style={styles.routeContainer}>
-          <View style={styles.locationContainer}>
-            <View style={styles.locationDot} />
-            <Text style={[styles.locationText, { color: theme.textColor }]}>{ride.from}</Text>
-          </View>
-          <View style={styles.routeLine} />
-          <View style={styles.locationContainer}>
-            <View style={[styles.locationDot, { backgroundColor: '#4CAF50' }]} />
-            <Text style={[styles.locationText, { color: theme.textColor }]}>{ride.to}</Text>
-          </View>
-        </View>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-          <Icon name="arrow-left" size={18} color="#FFFFFF" />
-        </TouchableOpacity>
+        <IconButton
+          icon="arrow-left"
+          size={24}
+          iconColor={colors.text.primary}
+          onPress={() => navigation.goBack()}
+        />
+        <Title style={styles.headerTitle}>Yolculuk Detayı</Title>
+        <View style={{ width: 40 }} />
       </View>
 
-      <View style={styles.contentContainer}>
-        <View style={styles.dateTimeContainer}>
-          <View style={styles.dateTimeItem}>
-            <Icon name="calendar-alt" size={16} color="#4A90E2" />
-            <Text style={[styles.dateTimeText, { color: theme.textColor }]}>{ride.date}</Text>
-          </View>
-          <View style={styles.dateTimeItem}>
-            <Icon name="clock" size={16} color="#4A90E2" />
-            <Text style={[styles.dateTimeText, { color: theme.textColor }]}>{ride.time}</Text>
-          </View>
-          <View style={[styles.priceTag, { backgroundColor: theme.primaryColor }]}>
-            <Text style={styles.priceText}>₺{ride.price}</Text>
-            <Text style={styles.priceUnit}>/kişi</Text>
-          </View>
-        </View>
-
-        <View style={styles.divider} />
-
-        <View style={styles.driverContainer}>
-          <View style={styles.driverHeader}>
-            <Text style={[styles.sectionTitle, { color: theme.textColor }]}>Sürücü</Text>
-            <TouchableOpacity 
-              style={styles.viewProfileButton} 
-              onPress={() => navigation.navigate('UserProfile', { userId: ride.driver.id })}
-            >
-              <Text style={[styles.viewProfileText, { color: theme.primaryColor }]}>Profili Gör</Text>
-            </TouchableOpacity>
-          </View>
-          
-          <View style={styles.driverCard}>
-            <Image source={ride.driver.image} style={styles.driverImage} />
-            <View style={styles.driverInfo}>
-              <Text style={[styles.driverName, { color: theme.textColor }]}>{ride.driver.name}</Text>
-              <View style={styles.driverRating}>
-                <Icon name="star" solid size={14} color="#FFD700" />
-                <Text style={[styles.driverRatingText, { color: theme.textColor }]}>
-                  {ride.driver.rating} ({ride.driver.tripCount} yolculuk)
-                </Text>
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        
+        {/* Rota Bilgileri */}
+        <Surface style={styles.section}>
+          <View style={styles.routeContainer}>
+            <View style={styles.routePoint}>
+              <MaterialIcons name="my-location" size={24} color={colors.primary} />
+              <View style={styles.routeText}>
+                <Text style={styles.cityText}>{ride.from.city}</Text>
+                {ride.from.district && (
+                  <Text style={styles.districtText}>{ride.from.district}</Text>
+                )}
+                {ride.from.address && (
+                  <Text style={styles.addressText}>{ride.from.address}</Text>
+                )}
               </View>
-              <Text style={[styles.memberSinceText, { color: theme.textSecondaryColor }]}>
-                {ride.driver.memberSince} tarihinden beri üye
+            </View>
+
+            <View style={styles.routeArrow}>
+              <MaterialIcons name="arrow-downward" size={24} color={colors.text.secondary} />
+            </View>
+
+            <View style={styles.routePoint}>
+              <MaterialIcons name="location-on" size={24} color={colors.error} />
+              <View style={styles.routeText}>
+                <Text style={styles.cityText}>{ride.to.city}</Text>
+                {ride.to.district && (
+                  <Text style={styles.districtText}>{ride.to.district}</Text>
+                )}
+                {ride.to.address && (
+                  <Text style={styles.addressText}>{ride.to.address}</Text>
+                )}
+              </View>
+            </View>
+          </View>
+        </Surface>
+
+        {/* Tarih ve Saat */}
+        <Surface style={styles.section}>
+          <Title style={styles.sectionTitle}>Tarih ve Saat</Title>
+          <View style={styles.infoRow}>
+            <MaterialIcons name="calendar-today" size={20} color={colors.text.secondary} />
+            <Text style={styles.infoText}>{formatDate(ride.departureDate)}</Text>
+          </View>
+          <View style={styles.infoRow}>
+            <MaterialIcons name="schedule" size={20} color={colors.text.secondary} />
+            <Text style={styles.infoText}>{ride.departureTime}</Text>
+          </View>
+        </Surface>
+
+        {/* Sürücü Bilgileri */}
+        <Surface style={styles.section}>
+          <Title style={styles.sectionTitle}>Sürücü</Title>
+          <View style={styles.driverInfo}>
+            <MaterialIcons name="person" size={40} color={colors.text.secondary} />
+            <View style={styles.driverDetails}>
+              <Text style={styles.driverName}>
+                {ride.driver.firstName} {ride.driver.lastName}
+              </Text>
+              {ride.driver.rating && typeof ride.driver.rating === 'number' && ride.driver.rating > 0 && (
+                <View style={styles.ratingContainer}>
+                  <MaterialIcons name="star" size={16} color={colors.star} />
+                  <Text style={styles.ratingText}>{ride.driver.rating.toFixed(1)}</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        </Surface>
+
+        {/* Araç Bilgileri */}
+        <Surface style={styles.section}>
+          <Title style={styles.sectionTitle}>Araç</Title>
+          <View style={styles.infoRow}>
+            <MaterialIcons name="directions-car" size={20} color={colors.text.secondary} />
+            <Text style={styles.infoText}>
+              {ride.vehicle.make} {ride.vehicle.model} ({ride.vehicle.year})
+            </Text>
+          </View>
+          {ride.vehicle.color && (
+            <View style={styles.infoRow}>
+              <MaterialIcons name="palette" size={20} color={colors.text.secondary} />
+              <Text style={styles.infoText}>{ride.vehicle.color}</Text>
+            </View>
+          )}
+          <View style={styles.infoRow}>
+            <MaterialIcons name="confirmation-number" size={20} color={colors.text.secondary} />
+            <Text style={styles.infoText}>{ride.vehicle.licensePlate}</Text>
+          </View>
+        </Surface>
+
+        {/* Kapasite ve Fiyat */}
+        <Surface style={styles.section}>
+          <Title style={styles.sectionTitle}>Kapasite ve Fiyat</Title>
+          <View style={styles.capacityPriceContainer}>
+            <View style={styles.capacityContainer}>
+              <Text style={styles.capacityLabel}>Müsait Koltuk</Text>
+              <Text style={[
+                styles.capacityValue,
+                { color: ride.remainingSeats > 0 ? colors.success : colors.error }
+              ]}>
+                {ride.remainingSeats} / {ride.availableSeats}
               </Text>
             </View>
-            {ride.driver.verified && (
-              <View style={styles.verifiedBadge}>
-                <Icon name="check-circle" solid size={14} color="#4CAF50" />
-                <Text style={styles.verifiedText}>Doğrulanmış</Text>
+            <View style={styles.priceContainer}>
+              <Text style={styles.priceLabel}>Koltuk Başına</Text>
+              <Text style={styles.priceValue}>{formatPrice(ride.pricePerSeat)}</Text>
+            </View>
+          </View>
+        </Surface>
+
+        {/* Tercihler */}
+        <Surface style={styles.section}>
+          <Title style={styles.sectionTitle}>Yolculuk Tercihleri</Title>
+          <View style={styles.preferencesGrid}>
+            <View style={styles.preferenceItem}>
+              <MaterialIcons 
+                name={ride.preferences?.smokingAllowed ? "check-circle" : "cancel"} 
+                size={20} 
+                color={ride.preferences?.smokingAllowed ? colors.success : colors.error} 
+              />
+              <Text style={styles.preferenceText}>Sigara</Text>
+            </View>
+            <View style={styles.preferenceItem}>
+              <MaterialIcons 
+                name={ride.preferences?.petsAllowed ? "check-circle" : "cancel"} 
+                size={20} 
+                color={ride.preferences?.petsAllowed ? colors.success : colors.error} 
+              />
+              <Text style={styles.preferenceText}>Evcil Hayvan</Text>
+            </View>
+            <View style={styles.preferenceItem}>
+              <MaterialIcons 
+                name={ride.preferences?.musicAllowed ? "check-circle" : "cancel"} 
+                size={20} 
+                color={ride.preferences?.musicAllowed ? colors.success : colors.error} 
+              />
+              <Text style={styles.preferenceText}>Müzik</Text>
+            </View>
+          </View>
+          <View style={styles.infoRow}>
+            <MaterialIcons name="chat" size={20} color={colors.text.secondary} />
+            <Text style={styles.infoText}>
+              Sohbet: {conversationLevels[ride.preferences?.conversationLevel] || 'Belirtilmemiş'}
+            </Text>
+          </View>
+        </Surface>
+
+        {/* Açıklama */}
+        {(ride.description || ride.notes) && (
+          <Surface style={styles.section}>
+            <Title style={styles.sectionTitle}>Ek Bilgiler</Title>
+            {ride.description && (
+              <View style={styles.descriptionContainer}>
+                <Text style={styles.descriptionLabel}>Açıklama:</Text>
+                <Text style={styles.descriptionText}>{ride.description}</Text>
               </View>
             )}
-          </View>
-        </View>
-
-        <View style={styles.divider} />
-
-        <Text style={[styles.sectionTitle, { color: theme.textColor }]}>Araç</Text>
-        <View style={styles.vehicleContainer}>
-          <Image source={ride.vehicle.image} style={styles.vehicleImage} />
-          <View style={styles.vehicleInfo}>
-            <Text style={[styles.vehicleName, { color: theme.textColor }]}>
-              {ride.vehicle.name}
-            </Text>
-            <Text style={[styles.vehicleModel, { color: theme.textSecondaryColor }]}>
-              {ride.vehicle.model}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.divider} />
-
-        <Text style={[styles.sectionTitle, { color: theme.textColor }]}>Duraklar</Text>
-        <View style={styles.stopsContainer}>
-          {ride.stops.map((stop, index) => (
-            <View key={index} style={styles.stopItem}>
-              <View style={styles.stopDot} />
-              <Text style={[styles.stopLocation, { color: theme.textColor }]}>{stop.location}</Text>
-              <Text style={[styles.stopTime, { color: theme.textSecondaryColor }]}>{stop.time}</Text>
-            </View>
-          ))}
-        </View>
-
-        <View style={styles.divider} />
-
-        <Text style={[styles.sectionTitle, { color: theme.textColor }]}>Tercihler</Text>
-        <View style={styles.preferencesContainer}>
-          {ride.preferences.map((preference, index) => (
-            <View key={index} style={styles.preferenceItem}>
-              <Icon 
-                name={getPreferenceIcon(preference)} 
-                size={16} 
-                color="#4A90E2" 
-              />
-              <Text style={[styles.preferenceText, { color: theme.textSecondaryColor }]}>
-                {preference}
-              </Text>
-            </View>
-          ))}
-        </View>
-
-        <View style={styles.divider} />
-
-        <Text style={[styles.sectionTitle, { color: theme.textColor }]}>Notlar</Text>
-        <Text style={[styles.notesText, { color: theme.textSecondaryColor }]}>
-          {ride.notes}
-        </Text>
-
-        <View style={styles.divider} />
-
-        <Text style={[styles.sectionTitle, { color: theme.textColor }]}>Koltuk Seçimi</Text>
-        <View style={styles.seatsContainer}>
-          <Text style={[styles.seatsText, { color: theme.textSecondaryColor }]}>
-            {ride.availableSeats} koltuk mevcut
-          </Text>
-          <View style={styles.seatSelector}>
-            <TouchableOpacity
-              style={[styles.seatButton, { borderColor: theme.borderColor }]}
-              onPress={handleDecreaseSeats}
-              disabled={selectedSeats === 0}
-            >
-              <Icon name="minus" size={16} color={selectedSeats === 0 ? '#CCCCCC' : '#FF5A5F'} />
-            </TouchableOpacity>
-            <Text style={[styles.seatCount, { color: theme.textColor }]}>{selectedSeats}</Text>
-            <TouchableOpacity
-              style={[styles.seatButton, { borderColor: theme.borderColor }]}
-              onPress={handleIncreaseSeats}
-              disabled={selectedSeats === ride.availableSeats}
-            >
-              <Icon 
-                name="plus" 
-                size={16} 
-                color={selectedSeats === ride.availableSeats ? '#CCCCCC' : '#FF5A5F'} 
-              />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {selectedSeats > 0 && (
-          <View style={styles.summaryContainer}>
-            <View style={styles.summaryRow}>
-              <Text style={[styles.summaryText, { color: theme.textSecondaryColor }]}>
-                Kişi başı ücret
-              </Text>
-              <Text style={[styles.summaryValue, { color: theme.textColor }]}>
-                ₺{ride.price}
-              </Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <Text style={[styles.summaryText, { color: theme.textSecondaryColor }]}>
-                Koltuk sayısı
-              </Text>
-              <Text style={[styles.summaryValue, { color: theme.textColor }]}>
-                {selectedSeats}
-              </Text>
-            </View>
-            <View style={[styles.summaryRow, styles.totalRow]}>
-              <Text style={[styles.totalText, { color: theme.textColor }]}>
-                Toplam
-              </Text>
-              <Text style={[styles.totalValue, { color: theme.primaryColor }]}>
-                ₺{ride.price * selectedSeats}
-              </Text>
-            </View>
-          </View>
+            {ride.notes && (
+              <View style={styles.descriptionContainer}>
+                <Text style={styles.descriptionLabel}>Notlar:</Text>
+                <Text style={styles.descriptionText}>{ride.notes}</Text>
+              </View>
+            )}
+          </Surface>
         )}
 
-        <TouchableOpacity 
-          style={[styles.bookButton, { opacity: selectedSeats > 0 ? 1 : 0.6 }]} 
-          onPress={handleBookRide}
-          disabled={selectedSeats === 0}
-        >
-          <Text style={styles.bookButtonText}>Rezervasyon Yap</Text>
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
+        <View style={styles.bottomSpace} />
+      </ScrollView>
+
+      {/* Alt Butonlar */}
+      {!isOwnRide && (
+        <View style={styles.actionContainer}>
+          <View style={styles.actionButtons}>
+            <Button
+              mode="outlined"
+              onPress={handleContactDriver}
+              style={styles.contactButton}
+              icon="message"
+              textColor={colors.primary}
+            >
+              Mesaj Gönder
+            </Button>
+            <Button
+              mode="contained"
+              onPress={handleJoinRide}
+              disabled={ride.remainingSeats <= 0}
+              style={styles.joinButton}
+              buttonColor={ride.remainingSeats > 0 ? colors.primary : colors.text.disabled}
+            >
+              {ride.remainingSeats > 0 ? 'Yolculuğa Katıl' : 'Dolu'}
+            </Button>
+          </View>
+        </View>
+      )}
+
+      {isOwnRide && (
+        <View style={styles.actionContainer}>
+          <Text style={styles.ownRideText}>Bu sizin yolculuğunuz</Text>
+        </View>
+      )}
+    </SafeAreaView>
   );
-};
-
-const getPreferenceIcon = (preference) => {
-  const preferenceIcons = {
-    'Sigara içilmez': 'smoking-ban',
-    'Evcil hayvan': 'paw',
-    'Müzik açık': 'music',
-    'Küçük bagaj': 'luggage-cart',
-    'Sessiz yolculuk': 'volume-mute',
-  };
-
-  return preferenceIcons[preference] || 'check-circle';
-};
+}
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.background,
   },
   header: {
-    backgroundColor: '#4A90E2',
-    padding: 20,
-    paddingTop: 40,
-    position: 'relative',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
-  backButton: {
-    position: 'absolute',
-    top: 16,
-    left: 16,
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text.primary,
+  },
+  centerContainer: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 10,
+    padding: spacing.lg,
   },
-  routeContainer: {
-    marginTop: 10,
+  loadingText: {
+    marginTop: spacing.md,
+    color: colors.text.secondary,
+    fontSize: 16,
   },
-  locationContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 8,
-  },
-  locationDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#FF5A5F',
-    marginRight: 10,
-  },
-  locationText: {
+  emptyTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#FFFFFF',
+    color: colors.text.primary,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
   },
-  routeLine: {
-    width: 2,
-    height: 30,
-    backgroundColor: '#FFFFFF',
-    marginLeft: 5,
+  emptyText: {
+    fontSize: 14,
+    color: colors.text.secondary,
+    textAlign: 'center',
   },
-  contentContainer: {
-    padding: 16,
+  scrollView: {
+    flex: 1,
+    paddingHorizontal: spacing.md,
   },
-  dateTimeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  dateTimeItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: 16,
-  },
-  dateTimeText: {
-    fontSize: 16,
-    color: '#333333',
-    marginLeft: 6,
-  },
-  priceTag: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    backgroundColor: '#FF5A5F',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  priceText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  priceUnit: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    marginLeft: 2,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#EEEEEE',
-    marginVertical: 16,
+  section: {
+    marginTop: spacing.md,
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    elevation: 2,
   },
   sectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: spacing.md,
+    color: colors.text.primary,
+  },
+  routeContainer: {
+    alignItems: 'center',
+  },
+  routePoint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    marginVertical: spacing.sm,
+  },
+  routeText: {
+    marginLeft: spacing.md,
+    flex: 1,
+  },
+  cityText: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#333333',
-    marginBottom: 12,
+    color: colors.text.primary,
   },
-  driverContainer: {
-    marginBottom: 8,
-  },
-  driverHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  viewProfileButton: {
-    padding: 4,
-  },
-  viewProfileText: {
+  districtText: {
     fontSize: 14,
-    color: '#4A90E2',
-    fontWeight: '500',
+    color: colors.text.secondary,
+    marginTop: spacing.xs,
   },
-  driverCard: {
+  addressText: {
+    fontSize: 12,
+    color: colors.text.secondary,
+    marginTop: spacing.xs,
+  },
+  routeArrow: {
+    alignSelf: 'flex-start',
+    marginLeft: spacing.xs,
+    marginVertical: spacing.sm,
+  },
+  infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F5F5F5',
-    padding: 12,
-    borderRadius: 8,
+    marginBottom: spacing.sm,
   },
-  driverImage: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+  infoText: {
+    marginLeft: spacing.sm,
+    fontSize: 16,
+    color: colors.text.primary,
   },
   driverInfo: {
-    marginLeft: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  driverDetails: {
+    marginLeft: spacing.md,
     flex: 1,
   },
   driverName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333333',
-    marginBottom: 2,
-  },
-  driverRating: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 2,
-  },
-  driverRatingText: {
-    fontSize: 14,
-    color: '#333333',
-    marginLeft: 4,
-  },
-  memberSinceText: {
-    fontSize: 12,
-    color: '#888888',
-  },
-  verifiedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(76, 175, 80, 0.1)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  verifiedText: {
-    fontSize: 12,
-    color: '#4CAF50',
-    marginLeft: 4,
-  },
-  vehicleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  vehicleImage: {
-    width: 80,
-    height: 50,
-    borderRadius: 4,
-    marginRight: 12,
-  },
-  vehicleInfo: {
-    flex: 1,
-  },
-  vehicleName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333333',
-    marginBottom: 2,
-  },
-  vehicleModel: {
-    fontSize: 14,
-    color: '#888888',
-  },
-  stopsContainer: {
-    marginBottom: 8,
-  },
-  stopItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  stopDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#4A90E2',
-    marginRight: 10,
-  },
-  stopLocation: {
-    fontSize: 16,
-    color: '#333333',
-    flex: 1,
-  },
-  stopTime: {
-    fontSize: 14,
-    color: '#888888',
-  },
-  preferencesContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: 8,
-  },
-  preferenceItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F5F5F5',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 16,
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  preferenceText: {
-    fontSize: 14,
-    color: '#555555',
-    marginLeft: 6,
-  },
-  notesText: {
-    fontSize: 14,
-    lineHeight: 22,
-    color: '#666666',
-  },
-  seatsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  seatsText: {
-    fontSize: 14,
-    color: '#666666',
-  },
-  seatSelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  seatButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#DDDDDD',
-  },
-  seatCount: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333333',
-    marginHorizontal: 16,
-    minWidth: 24,
-    textAlign: 'center',
-  },
-  summaryContainer: {
-    backgroundColor: '#F5F5F5',
-    borderRadius: 8,
-    padding: 16,
-    marginTop: 8,
-    marginBottom: 24,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  summaryText: {
-    fontSize: 14,
-    color: '#666666',
-  },
-  summaryValue: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#333333',
-  },
-  totalRow: {
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#DDDDDD',
-  },
-  totalText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333333',
-  },
-  totalValue: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#FF5A5F',
+    color: colors.text.primary,
   },
-  bookButton: {
-    backgroundColor: '#FF5A5F',
-    borderRadius: 8,
-    padding: 16,
+  ratingContainer: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 24,
+    marginTop: spacing.xs,
   },
-  bookButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
+  ratingText: {
+    marginLeft: spacing.xs,
+    fontSize: 14,
+    color: colors.text.secondary,
+  },
+  capacityPriceContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  capacityContainer: {
+    alignItems: 'center',
+  },
+  capacityLabel: {
+    fontSize: 14,
+    color: colors.text.secondary,
+    marginBottom: spacing.xs,
+  },
+  capacityValue: {
+    fontSize: 20,
     fontWeight: 'bold',
   },
-});
-
-export default RideDetailScreen; 
+  priceContainer: {
+    alignItems: 'center',
+  },
+  priceLabel: {
+    fontSize: 14,
+    color: colors.text.secondary,
+    marginBottom: spacing.xs,
+  },
+  priceValue: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colors.primary,
+  },
+  preferencesGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: spacing.md,
+  },
+  preferenceItem: {
+    alignItems: 'center',
+  },
+  preferenceText: {
+    fontSize: 12,
+    color: colors.text.secondary,
+    marginTop: spacing.xs,
+  },
+  descriptionContainer: {
+    marginBottom: spacing.md,
+  },
+  descriptionLabel: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: colors.text.primary,
+    marginBottom: spacing.xs,
+  },
+  descriptionText: {
+    fontSize: 14,
+    color: colors.text.secondary,
+    lineHeight: 20,
+  },
+  bottomSpace: {
+    height: spacing.lg,
+  },
+  actionContainer: {
+    padding: spacing.md,
+    backgroundColor: colors.surface,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  contactButton: {
+    borderRadius: borderRadius.md,
+    flex: 1,
+  },
+  joinButton: {
+    borderRadius: borderRadius.md,
+    flex: 2,
+  },
+  ownRideText: {
+    textAlign: 'center',
+    fontSize: 16,
+    color: colors.text.secondary,
+    fontStyle: 'italic',
+  },
+}); 

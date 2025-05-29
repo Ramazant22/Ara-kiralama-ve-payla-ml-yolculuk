@@ -1,318 +1,175 @@
-import React, { useState, useContext } from 'react';
-import {
-  StyleSheet,
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  SafeAreaView,
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  TouchableWithoutFeedback,
-  Keyboard,
-  StatusBar,
-  ActivityIndicator,
-  Alert,
-} from 'react-native';
-import Icon from 'react-native-vector-icons/FontAwesome5';
-import { AuthContext } from '../context/AuthContext';
+import React, { useState } from 'react';
+import { View, StyleSheet, Alert, ScrollView } from 'react-native';
+import { 
+  TextInput, 
+  Button, 
+  Text, 
+  Card, 
+  Title,
+  HelperText,
+  ActivityIndicator 
+} from 'react-native-paper';
+import { useAuth } from '../hooks/useAuth';
+import { colors, spacing, borderRadius, elevation } from '../styles/theme';
 
-const LoginScreen = ({ navigation }) => {
-  const { login } = useContext(AuthContext);
+export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [emailError, setEmailError] = useState('');
-  const [passwordError, setPasswordError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [errors, setErrors] = useState({});
   
-  const validateEmail = (email) => {
-    const re = /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
-    return re.test(String(email).toLowerCase());
-  };
-  
-  const handleLogin = async () => {
-    let isValid = true;
+  const { login } = useAuth();
+
+  const validateForm = () => {
+    const newErrors = {};
     
-    // Email validation
     if (!email.trim()) {
-      setEmailError('E-posta adresi gerekli');
-      isValid = false;
-    } else if (!validateEmail(email)) {
-      setEmailError('Geçerli bir e-posta adresi girin');
-      isValid = false;
-    } else {
-      setEmailError('');
+      newErrors.email = 'E-posta adresi gerekli';
+    } else if (!/\S+@\S+\.\S+/.test(email)) {
+      newErrors.email = 'Geçerli bir e-posta adresi girin';
     }
     
-    // Password validation
-    if (!password) {
-      setPasswordError('Şifre gerekli');
-      isValid = false;
+    if (!password.trim()) {
+      newErrors.password = 'Şifre gerekli';
     } else if (password.length < 6) {
-      setPasswordError('Şifre en az 6 karakter olmalıdır');
-      isValid = false;
-    } else {
-      setPasswordError('');
+      newErrors.password = 'Şifre en az 6 karakter olmalı';
     }
     
-    if (isValid) {
-      setLoading(true);
-      try {
-        await login(email, password);
-        
-        // Doğrulama kontrolünü kaldırıp doğrudan ana sayfaya yönlendir
-        navigation.navigate('Root');
-      } catch (error) {
-        Alert.alert(
-          'Giriş Hatası',
-          error.message || 'Giriş sırasında bir hata oluştu. Lütfen tekrar deneyin.'
-        );
-      } finally {
-        setLoading(false);
-      }
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleLogin = async () => {
+    if (!validateForm()) return;
+    
+    setIsLoading(true);
+    
+    const result = await login(email, password);
+    
+    if (!result.success) {
+      Alert.alert('Hata', result.message);
     }
+    
+    setIsLoading(false);
   };
 
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-      <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-        <KeyboardAvoidingView 
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={styles.keyboardContainer}
-        >
-          <View style={styles.logoContainer}>
-            <Image 
-              source={require('../../assets/images/logo.png')} 
-              style={styles.logo}
-              resizeMode="contain"
+    <ScrollView style={styles.container}>
+      <View style={styles.content}>
+        <Card style={styles.card}>
+          <Card.Content>
+            <Title style={styles.title}>Hoş Geldiniz</Title>
+            <Text style={styles.subtitle}>Hesabınıza giriş yapın</Text>
+            
+            <TextInput
+              label="E-posta"
+              value={email}
+              onChangeText={setEmail}
+              mode="outlined"
+              style={styles.input}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              error={!!errors.email}
+              theme={{
+                colors: {
+                  primary: colors.primary,
+                  outline: colors.text.secondary,
+                }
+              }}
             />
-            <Text style={styles.logoText}>TakDrive</Text>
-            <Text style={styles.tagline}>Yolculuklarınızı paylaşın, tasarruf edin</Text>
-          </View>
-          
-          <View style={styles.formContainer}>
-            <View style={styles.inputContainer}>
-              <Icon name="envelope" size={18} color="#AAAAAA" style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="E-posta"
-                placeholderTextColor="#AAAAAA"
-                keyboardType="email-address"
-                autoCapitalize="none"
-                value={email}
-                onChangeText={setEmail}
-              />
-            </View>
-            {emailError ? <Text style={styles.errorText}>{emailError}</Text> : null}
+            <HelperText type="error" visible={!!errors.email}>
+              {errors.email}
+            </HelperText>
             
-            <View style={styles.inputContainer}>
-              <Icon name="lock" size={18} color="#AAAAAA" style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Şifre"
-                placeholderTextColor="#AAAAAA"
-                secureTextEntry={!showPassword}
-                value={password}
-                onChangeText={setPassword}
-              />
-              <TouchableOpacity 
-                style={styles.passwordToggle}
-                onPress={() => setShowPassword(!showPassword)}
-              >
-                <Icon name={showPassword ? "eye-slash" : "eye"} size={18} color="#AAAAAA" />
-              </TouchableOpacity>
-            </View>
-            {passwordError ? <Text style={styles.errorText}>{passwordError}</Text> : null}
+            <TextInput
+              label="Şifre"
+              value={password}
+              onChangeText={setPassword}
+              mode="outlined"
+              style={styles.input}
+              secureTextEntry
+              error={!!errors.password}
+              theme={{
+                colors: {
+                  primary: colors.primary,
+                  outline: colors.text.secondary,
+                }
+              }}
+            />
+            <HelperText type="error" visible={!!errors.password}>
+              {errors.password}
+            </HelperText>
             
-            <TouchableOpacity 
-              style={styles.forgotPassword}
-              onPress={() => navigation.navigate('ForgotPassword')}
-            >
-              <Text style={styles.forgotPasswordText}>Şifremi Unuttum</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[styles.loginButton, { opacity: loading ? 0.7 : 1 }]}
+            <Button
+              mode="contained"
               onPress={handleLogin}
-              disabled={loading}
+              style={styles.button}
+              disabled={isLoading}
+              buttonColor={colors.primary}
+              textColor={colors.onPrimary}
             >
-              {loading ? (
-                <ActivityIndicator color="#FFFFFF" size="small" />
-              ) : (
-                <Text style={styles.loginButtonText}>Giriş Yap</Text>
-              )}
-            </TouchableOpacity>
+              {isLoading ? <ActivityIndicator color={colors.onPrimary} /> : 'Giriş Yap'}
+            </Button>
             
-            <View style={styles.orContainer}>
-              <View style={styles.orLine} />
-              <Text style={styles.orText}>veya</Text>
-              <View style={styles.orLine} />
-            </View>
+            <Button
+              mode="text"
+              onPress={() => navigation.navigate('ForgotPassword')}
+              style={styles.textButton}
+              textColor={colors.primary}
+            >
+              Şifremi Unuttum
+            </Button>
             
-            <View style={styles.socialButtonsContainer}>
-              <TouchableOpacity style={[styles.socialButton, styles.googleButton]}>
-                <Icon name="google" size={18} color="#FFFFFF" />
-                <Text style={styles.socialButtonText}>Google</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity style={[styles.socialButton, styles.facebookButton]}>
-                <Icon name="facebook-f" size={18} color="#FFFFFF" />
-                <Text style={styles.socialButtonText}>Facebook</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-          
-          <View style={styles.registerContainer}>
-            <Text style={styles.registerText}>Hesabınız yok mu?</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('Register')}>
-              <Text style={styles.registerLink}>Kayıt Ol</Text>
-            </TouchableOpacity>
-          </View>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
-    </TouchableWithoutFeedback>
+            <Button
+              mode="text"
+              onPress={() => navigation.navigate('Register')}
+              style={styles.textButton}
+              textColor={colors.primary}
+            >
+              Hesabınız yok mu? Kayıt olun
+            </Button>
+          </Card.Content>
+        </Card>
+      </View>
+    </ScrollView>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.background,
   },
-  keyboardContainer: {
+  content: {
     flex: 1,
+    padding: spacing.md,
     justifyContent: 'center',
-    padding: 20,
   },
-  logoContainer: {
-    alignItems: 'center',
-    marginBottom: 40,
+  card: {
+    elevation: elevation.medium,
+    borderRadius: borderRadius.lg,
+    backgroundColor: colors.surface,
   },
-  logo: {
-    width: 80,
-    height: 80,
-    marginBottom: 16,
-  },
-  logoText: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#FF4500',
-    marginBottom: 8,
-  },
-  tagline: {
-    fontSize: 16,
-    color: '#666666',
+  title: {
     textAlign: 'center',
+    marginBottom: spacing.sm,
+    color: colors.primary,
+    fontSize: 24,
   },
-  formContainer: {
-    width: '100%',
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F5F5F5',
-    borderRadius: 8,
-    marginBottom: 12,
-    paddingHorizontal: 12,
-    height: 50,
-  },
-  inputIcon: {
-    marginRight: 10,
+  subtitle: {
+    textAlign: 'center',
+    marginBottom: spacing.lg,
+    color: colors.text.secondary,
   },
   input: {
-    flex: 1,
-    height: 50,
-    color: '#333333',
-    fontSize: 16,
+    marginBottom: spacing.sm,
+    backgroundColor: colors.surface,
   },
-  passwordToggle: {
-    padding: 8,
+  button: {
+    marginTop: spacing.md,
+    paddingVertical: spacing.sm,
   },
-  errorText: {
-    color: '#FF3B30',
-    fontSize: 14,
-    marginTop: -8,
-    marginBottom: 12,
-    marginLeft: 4,
-  },
-  forgotPassword: {
-    alignSelf: 'flex-end',
-    marginBottom: 20,
-  },
-  forgotPasswordText: {
-    color: '#FF4500',
-    fontSize: 14,
-  },
-  loginButton: {
-    backgroundColor: '#FF4500',
-    borderRadius: 8,
-    height: 50,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 20,
-  },
-  loginButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  orContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  orLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#E0E0E0',
-  },
-  orText: {
-    color: '#AAAAAA',
-    fontSize: 14,
-    marginHorizontal: 15,
-  },
-  socialButtonsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  socialButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 50,
-    borderRadius: 8,
-    width: '48%',
-  },
-  googleButton: {
-    backgroundColor: '#DB4437',
-  },
-  facebookButton: {
-    backgroundColor: '#3B5998',
-  },
-  socialButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '500',
-    marginLeft: 10,
-  },
-  registerContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 40,
-  },
-  registerText: {
-    color: '#666666',
-    fontSize: 16,
-  },
-  registerLink: {
-    color: '#FF4500',
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginLeft: 5,
+  textButton: {
+    marginTop: spacing.sm,
   },
 });
-
-export default LoginScreen; 

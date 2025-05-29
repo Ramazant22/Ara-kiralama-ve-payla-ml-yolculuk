@@ -1,386 +1,580 @@
-import React, { useContext, useState, useEffect } from 'react';
-import {
-  StyleSheet,
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  Image,
-  Alert,
+import React, { useState, useEffect } from 'react';
+import { View, StyleSheet, ScrollView, Alert, TouchableOpacity, Image } from 'react-native';
+import { 
+  TextInput, 
+  Button, 
+  Text, 
+  Card, 
+  Title,
+  HelperText,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  StatusBar
-} from 'react-native';
-import Icon from 'react-native-vector-icons/FontAwesome5';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { AuthContext } from '../context/AuthContext';
-import { ThemeContext } from '../context/ThemeContext';
+  Avatar,
+  IconButton,
+  Chip
+} from 'react-native-paper';
 import * as ImagePicker from 'expo-image-picker';
-import userService from '../api/services/userService';
+import * as DocumentPicker from 'expo-document-picker';
+import { MaterialIcons } from '@expo/vector-icons';
+import { useAuth } from '../hooks/useAuth';
+import { authService } from '../services/authService';
+import { colors, spacing, borderRadius, elevation } from '../styles/theme';
 
-const EditProfileScreen = ({ navigation }) => {
-  const { darkMode } = useContext(ThemeContext);
-  const { user, refreshUserData } = useContext(AuthContext);
-  const [loading, setLoading] = useState(false);
-  const [uploading, setUploading] = useState(false);
+export default function EditProfileScreen({ navigation }) {
+  const { user, updateUserData } = useAuth();
+  const [isLoading, setIsLoading] = useState(false);
+  const [errors, setErrors] = useState({});
+  const [profileImage, setProfileImage] = useState(null);
+  const [licenseDocument, setLicenseDocument] = useState(null);
   
-  // Form state'leri
-  const [fullName, setFullName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [bio, setBio] = useState('');
-  
+  const [formData, setFormData] = useState({
+    firstName: '',
+    lastName: '',
+    phone: '',
+    address: {
+      street: '',
+      city: '',
+      district: '',
+      postalCode: '',
+      country: 'Türkiye'
+    },
+    drivingLicense: {
+      number: '',
+      expiryDate: '',
+      verified: false
+    }
+  });
+
   useEffect(() => {
     if (user) {
-      // Kullanıcı bilgilerini form alanlarına doldur
-      setFullName(user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : '');
-      setPhone(user.phoneNumber || '');
-      setBio(user.bio || '');
+      setFormData({
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
+        phone: user.phone || '',
+        address: {
+          street: user.address?.street || '',
+          city: user.address?.city || '',
+          district: user.address?.district || '',
+          postalCode: user.address?.postalCode || '',
+          country: user.address?.country || 'Türkiye'
+        },
+        drivingLicense: {
+          number: user.drivingLicense?.number || '',
+          expiryDate: user.drivingLicense?.expiryDate || '',
+          verified: user.drivingLicense?.verified || false
+        }
+      });
+      setProfileImage(user.avatar);
     }
   }, [user]);
-  
-  const handleSave = async () => {
-    try {
-      setLoading(true);
-      
-      // Ad ve soyad ayrıştırma
-      const nameParts = fullName.trim().split(' ');
-      const firstName = nameParts[0] || '';
-      const lastName = nameParts.slice(1).join(' ') || '';
-      
-      const userData = {
-        firstName,
-        lastName,
-        phoneNumber: phone,
-        bio
-      };
-      
-      // API'ye gönder
-      await userService.updateUserProfile(userData);
-      
-      // Kullanıcı verilerini yenile
-      await refreshUserData();
-      
-      Alert.alert(
-        'Başarılı',
-        'Profil bilgileriniz güncellendi.',
-        [{ text: 'Tamam', onPress: () => navigation.goBack() }]
-      );
-    } catch (error) {
-      console.error('Profil güncelleme hatası:', error);
-      Alert.alert('Hata', 'Profil güncellenirken bir sorun oluştu.');
-    } finally {
-      setLoading(false);
+
+  const validateForm = () => {
+    const newErrors = {};
+    
+    if (!formData.firstName.trim()) {
+      newErrors.firstName = 'Ad gerekli';
+    }
+    
+    if (!formData.lastName.trim()) {
+      newErrors.lastName = 'Soyad gerekli';
+    }
+    
+    if (!formData.phone.trim()) {
+      newErrors.phone = 'Telefon numarası gerekli';
+    } else if (!/^(\+90|0)?[0-9]{10}$/.test(formData.phone.replace(/\s/g, ''))) {
+      newErrors.phone = 'Geçerli bir telefon numarası girin';
+    }
+
+    // Ehliyet validasyonu
+    if (formData.drivingLicense.number && formData.drivingLicense.number.length < 6) {
+      newErrors.licenseNumber = 'Ehliyet numarası en az 6 karakter olmalıdır';
+    }
+
+    if (formData.drivingLicense.expiryDate) {
+      const expiryDate = new Date(formData.drivingLicense.expiryDate);
+      const today = new Date();
+      if (expiryDate <= today) {
+        newErrors.licenseExpiry = 'Ehliyet son kullanma tarihi geçmiş olamaz';
+      }
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const pickImage = async () => {
+    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    
+    if (permissionResult.granted === false) {
+      Alert.alert('İzin Gerekli', 'Fotoğraf seçmek için medya kütüphanesine erişim izni gerekli.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+
+    if (!result.canceled) {
+      setProfileImage(result.assets[0].uri);
     }
   };
-  
-  const handleChangePhoto = async () => {
+
+  const takePhoto = async () => {
+    const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+    
+    if (permissionResult.granted === false) {
+      Alert.alert('İzin Gerekli', 'Fotoğraf çekmek için kamera erişim izni gerekli.');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+
+    if (!result.canceled) {
+      setProfileImage(result.assets[0].uri);
+    }
+  };
+
+  const showImagePicker = () => {
+    Alert.alert(
+      'Profil Fotoğrafı',
+      'Nasıl bir fotoğraf eklemek istiyorsunuz?',
+      [
+        { text: 'İptal', style: 'cancel' },
+        { text: 'Galeriden Seç', onPress: pickImage },
+        { text: 'Fotoğraf Çek', onPress: takePhoto },
+      ]
+    );
+  };
+
+  const pickLicenseDocument = async () => {
     try {
-      // İzin iste
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      
-      if (status !== 'granted') {
-        Alert.alert('İzin Gerekli', 'Bu özelliği kullanmak için galeri erişim izni gerekiyor.');
-        return;
-      }
-      
-      // Resim seçiciyi aç
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['image/*', 'application/pdf'],
+        copyToCacheDirectory: true,
       });
-      
-      if (!result.canceled && result.assets && result.assets[0]) {
-        setUploading(true);
-        
-        const selectedImage = result.assets[0];
-        
-        // FormData oluştur
-        const formData = new FormData();
-        formData.append('profilePicture', {
-          uri: selectedImage.uri,
-          type: 'image/jpeg',
-          name: 'profile-picture.jpg',
-        });
-        
-        // API'ye gönder
-        try {
-          await userService.updateProfilePicture(formData);
-          await refreshUserData();
-          Alert.alert('Başarılı', 'Profil fotoğrafınız güncellendi.');
-        } catch (error) {
-          console.error('Profil fotoğrafı yükleme hatası:', error);
-          Alert.alert('Hata', 'Profil fotoğrafı yüklenirken bir sorun oluştu.');
-        } finally {
-          setUploading(false);
-        }
+
+      if (!result.canceled) {
+        setLicenseDocument(result.assets[0]);
       }
     } catch (error) {
-      console.error('Resim seçme hatası:', error);
-      setUploading(false);
+      Alert.alert('Hata', 'Belge seçilirken hata oluştu');
     }
   };
-  
-  const goToIdentityVerification = () => {
-    navigation.navigate('IdentityVerification');
+
+  const formatDate = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('tr-TR');
   };
-  
-  const getInitials = (name) => {
-    if (!name) return 'U';
-    return name.split(' ').map(n => n[0]).join('').toUpperCase();
+
+  const handleDateChange = (text) => {
+    // Basit tarih formatı: DD/MM/YYYY
+    let formatted = text.replace(/\D/g, '');
+    if (formatted.length >= 2) {
+      formatted = formatted.slice(0, 2) + '/' + formatted.slice(2);
+    }
+    if (formatted.length >= 5) {
+      formatted = formatted.slice(0, 5) + '/' + formatted.slice(5, 9);
+    }
+    
+    updateFormData('drivingLicense.expiryDate', formatted);
   };
-  
-  return (
-    <SafeAreaView style={[styles.container, { backgroundColor: darkMode ? '#121212' : '#FFFFFF' }]}>
-      <StatusBar barStyle={darkMode ? "light-content" : "dark-content"} />
+
+  const handleSave = async () => {
+    if (!validateForm()) return;
+    
+    setIsLoading(true);
+    
+    try {
+      const updateData = {
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        phone: formData.phone,
+        address: formData.address
+      };
+
+      // Eğer yeni fotoğraf seçildiyse ekle
+      if (profileImage && profileImage !== user.avatar) {
+        updateData.avatar = profileImage;
+      }
+
+      // Ehliyet bilgileri varsa ekle
+      if (formData.drivingLicense.number || formData.drivingLicense.expiryDate) {
+        updateData.drivingLicense = formData.drivingLicense;
+      }
+
+      const response = await authService.updateProfile(updateData);
       
-      <KeyboardAvoidingView 
-        style={styles.keyboardView}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <ScrollView style={styles.scrollView}>
-          {/* Profil Fotoğrafı */}
-          <View style={styles.photoContainer}>
-            {uploading ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#FF4500" />
-              </View>
-            ) : user?.profilePhoto ? (
-              <Image source={{ uri: user.profilePhoto }} style={styles.profilePhoto} />
-            ) : (
-              <View style={styles.avatarPlaceholder}>
-                <Text style={styles.initialsText}>{getInitials(fullName)}</Text>
-              </View>
-            )}
+      // Auth context'teki user bilgilerini güncelle
+      if (updateUserData) {
+        updateUserData(response.user);
+      }
+      
+      Alert.alert('Başarılı', 'Profil bilgileriniz güncellendi.', [
+        { text: 'Tamam', onPress: () => navigation.goBack() }
+      ]);
+      
+    } catch (error) {
+      Alert.alert(
+        'Hata', 
+        error.response?.data?.message || 'Profil güncellenirken hata oluştu'
+      );
+    }
+    
+    setIsLoading(false);
+  };
+
+  const updateFormData = (field, value) => {
+    if (field.includes('.')) {
+      const [parent, child] = field.split('.');
+      setFormData(prev => ({
+        ...prev,
+        [parent]: {
+          ...prev[parent],
+          [child]: value
+        }
+      }));
+    } else {
+      setFormData(prev => ({ ...prev, [field]: value }));
+    }
+  };
+
+  const inputTheme = {
+    colors: {
+      primary: colors.primary,
+      outline: colors.text.secondary,
+    }
+  };
+
+  return (
+    <ScrollView style={styles.container}>
+      <View style={styles.content}>
+        {/* Profil Fotoğrafı */}
+        <Card style={styles.photoCard}>
+          <Card.Content style={styles.photoContent}>
+            <View style={styles.avatarContainer}>
+              {profileImage ? (
+                <Image source={{ uri: profileImage }} style={styles.profileImage} />
+              ) : (
+                <Avatar.Text 
+                  size={120} 
+                  label={user?.firstName?.charAt(0) || 'U'} 
+                  style={styles.avatar}
+                />
+              )}
+              <TouchableOpacity style={styles.cameraButton} onPress={showImagePicker}>
+                <MaterialIcons name="camera-alt" size={24} color={colors.onPrimary} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.photoHint}>Profil fotoğrafınızı değiştirmek için tıklayın</Text>
+          </Card.Content>
+        </Card>
+
+        {/* Kişisel Bilgiler */}
+        <Card style={styles.card}>
+          <Card.Content>
+            <Title style={styles.sectionTitle}>Kişisel Bilgiler</Title>
             
+            <TextInput
+              label="Ad"
+              value={formData.firstName}
+              onChangeText={(value) => updateFormData('firstName', value)}
+              mode="outlined"
+              style={styles.input}
+              error={!!errors.firstName}
+              theme={inputTheme}
+            />
+            <HelperText type="error" visible={!!errors.firstName}>
+              {errors.firstName}
+            </HelperText>
+            
+            <TextInput
+              label="Soyad"
+              value={formData.lastName}
+              onChangeText={(value) => updateFormData('lastName', value)}
+              mode="outlined"
+              style={styles.input}
+              error={!!errors.lastName}
+              theme={inputTheme}
+            />
+            <HelperText type="error" visible={!!errors.lastName}>
+              {errors.lastName}
+            </HelperText>
+            
+            <TextInput
+              label="Telefon"
+              value={formData.phone}
+              onChangeText={(value) => updateFormData('phone', value)}
+              mode="outlined"
+              style={styles.input}
+              keyboardType="phone-pad"
+              error={!!errors.phone}
+              theme={inputTheme}
+            />
+            <HelperText type="error" visible={!!errors.phone}>
+              {errors.phone}
+            </HelperText>
+            
+            <TextInput
+              label="E-posta"
+              value={user?.email || ''}
+              mode="outlined"
+              style={styles.input}
+              disabled
+              theme={inputTheme}
+            />
+            <HelperText type="info">
+              E-posta adresi değiştirilemez
+            </HelperText>
+          </Card.Content>
+        </Card>
+
+        {/* Ehliyet Bilgileri */}
+        <Card style={styles.card}>
+          <Card.Content>
+            <View style={styles.sectionHeader}>
+              <Title style={styles.sectionTitle}>Ehliyet Bilgileri</Title>
+              {formData.drivingLicense.verified && (
+                <Chip 
+                  icon="check-circle" 
+                  style={styles.verifiedChip}
+                  textStyle={styles.verifiedChipText}
+                >
+                  Onaylandı
+                </Chip>
+              )}
+            </View>
+            
+            <TextInput
+              label="Ehliyet Numarası"
+              value={formData.drivingLicense.number}
+              onChangeText={(value) => updateFormData('drivingLicense.number', value)}
+              mode="outlined"
+              style={styles.input}
+              error={!!errors.licenseNumber}
+              theme={inputTheme}
+              maxLength={20}
+            />
+            <HelperText type="error" visible={!!errors.licenseNumber}>
+              {errors.licenseNumber}
+            </HelperText>
+            
+            <TextInput
+              label="Son Kullanma Tarihi (GG/AA/YYYY)"
+              value={formData.drivingLicense.expiryDate}
+              onChangeText={handleDateChange}
+              mode="outlined"
+              style={styles.input}
+              keyboardType="numeric"
+              error={!!errors.licenseExpiry}
+              theme={inputTheme}
+              placeholder="15/12/2030"
+              maxLength={10}
+            />
+            <HelperText type="error" visible={!!errors.licenseExpiry}>
+              {errors.licenseExpiry}
+            </HelperText>
+            
+            {/* Ehliyet Belgesi Yükleme */}
             <TouchableOpacity 
-              style={styles.changePhotoButton}
-              onPress={handleChangePhoto}
-              disabled={uploading}
+              style={styles.documentUploadButton} 
+              onPress={pickLicenseDocument}
             >
-              <Icon name="camera" size={16} color="#FFFFFF" />
-              <Text style={styles.changePhotoText}>Fotoğrafı Değiştir</Text>
-            </TouchableOpacity>
-          </View>
-          
-          {/* Form Alanları */}
-          <View style={styles.formContainer}>
-            <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, { color: darkMode ? '#FFFFFF' : '#000000' }]}>Ad Soyad</Text>
-              <TextInput
-                style={[styles.textInput, { 
-                  backgroundColor: darkMode ? '#333333' : '#F5F5F5',
-                  color: darkMode ? '#FFFFFF' : '#000000',
-                  borderColor: darkMode ? '#444444' : '#E0E0E0'
-                }]}
-                value={fullName}
-                onChangeText={setFullName}
-                placeholder="Ad Soyad"
-                placeholderTextColor={darkMode ? '#AAAAAA' : '#757575'}
-              />
-            </View>
-            
-            <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, { color: darkMode ? '#FFFFFF' : '#000000' }]}>E-posta</Text>
-              <TextInput
-                style={[styles.textInput, styles.disabledInput, { 
-                  backgroundColor: darkMode ? '#222222' : '#EEEEEE',
-                  color: darkMode ? '#AAAAAA' : '#757575',
-                  borderColor: darkMode ? '#444444' : '#E0E0E0'
-                }]}
-                value={user?.email}
-                editable={false}
-                placeholder="E-posta"
-                placeholderTextColor={darkMode ? '#AAAAAA' : '#757575'}
-              />
-              <Text style={[styles.helperText, { color: darkMode ? '#AAAAAA' : '#757575' }]}>
-                E-posta adresinizi değiştirmek için müşteri hizmetleriyle iletişime geçin.
+              <MaterialIcons name="upload-file" size={24} color={colors.primary} />
+              <Text style={styles.documentUploadText}>
+                {licenseDocument ? licenseDocument.name : 'Ehliyet Belgesi Yükle'}
               </Text>
-            </View>
+            </TouchableOpacity>
             
-            <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, { color: darkMode ? '#FFFFFF' : '#000000' }]}>Telefon</Text>
-              <TextInput
-                style={[styles.textInput, { 
-                  backgroundColor: darkMode ? '#333333' : '#F5F5F5',
-                  color: darkMode ? '#FFFFFF' : '#000000',
-                  borderColor: darkMode ? '#444444' : '#E0E0E0'
-                }]}
-                value={phone}
-                onChangeText={setPhone}
-                placeholder="Telefon"
-                placeholderTextColor={darkMode ? '#AAAAAA' : '#757575'}
-                keyboardType="phone-pad"
-              />
-            </View>
-            
-            <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, { color: darkMode ? '#FFFFFF' : '#000000' }]}>Hakkımda</Text>
-              <TextInput
-                style={[styles.textInput, styles.bioInput, { 
-                  backgroundColor: darkMode ? '#333333' : '#F5F5F5',
-                  color: darkMode ? '#FFFFFF' : '#000000',
-                  borderColor: darkMode ? '#444444' : '#E0E0E0'
-                }]}
-                value={bio}
-                onChangeText={setBio}
-                placeholder="Kendiniz hakkında kısa bir bilgi girin"
-                placeholderTextColor={darkMode ? '#AAAAAA' : '#757575'}
-                multiline
-                numberOfLines={4}
-                textAlignVertical="top"
-              />
-            </View>
-          </View>
-          
-          {/* Kimlik Doğrulama Butonu */}
-          <TouchableOpacity 
-            style={styles.verificationButton}
-            onPress={goToIdentityVerification}
-          >
-            <Icon name="id-card" size={18} color="#FFFFFF" />
-            <Text style={styles.verificationButtonText}>
-              Kimlik Bilgilerimi Düzenle
-            </Text>
-          </TouchableOpacity>
-          
-          {/* Kaydetme Butonu */}
-          <TouchableOpacity 
-            style={styles.saveButton}
-            onPress={handleSave}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <Text style={styles.saveButtonText}>Değişiklikleri Kaydet</Text>
+            {licenseDocument && (
+              <View style={styles.documentInfo}>
+                <MaterialIcons name="description" size={16} color={colors.primary} />
+                <Text style={styles.documentName}>{licenseDocument.name}</Text>
+                <TouchableOpacity onPress={() => setLicenseDocument(null)}>
+                  <MaterialIcons name="close" size={16} color={colors.error} />
+                </TouchableOpacity>
+              </View>
             )}
-          </TouchableOpacity>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+            
+            <HelperText type="info">
+              Ehliyet bilgileriniz doğrulama için yöneticiler tarafından incelenecektir.
+            </HelperText>
+          </Card.Content>
+        </Card>
+
+        {/* Adres Bilgileri */}
+        <Card style={styles.card}>
+          <Card.Content>
+            <Title style={styles.sectionTitle}>Adres Bilgileri</Title>
+            
+            <TextInput
+              label="Şehir"
+              value={formData.address.city}
+              onChangeText={(value) => updateFormData('address.city', value)}
+              mode="outlined"
+              style={styles.input}
+              theme={inputTheme}
+            />
+            
+            <TextInput
+              label="İlçe"
+              value={formData.address.district}
+              onChangeText={(value) => updateFormData('address.district', value)}
+              mode="outlined"
+              style={styles.input}
+              theme={inputTheme}
+            />
+            
+            <TextInput
+              label="Adres"
+              value={formData.address.street}
+              onChangeText={(value) => updateFormData('address.street', value)}
+              mode="outlined"
+              style={styles.input}
+              multiline
+              numberOfLines={3}
+              theme={inputTheme}
+            />
+            
+            <TextInput
+              label="Posta Kodu"
+              value={formData.address.postalCode}
+              onChangeText={(value) => updateFormData('address.postalCode', value)}
+              mode="outlined"
+              style={styles.input}
+              keyboardType="numeric"
+              theme={inputTheme}
+            />
+          </Card.Content>
+        </Card>
+
+        {/* Kaydet Butonu */}
+        <Button
+          mode="contained"
+          onPress={handleSave}
+          style={styles.saveButton}
+          disabled={isLoading}
+          buttonColor={colors.primary}
+          textColor={colors.onPrimary}
+        >
+          {isLoading ? <ActivityIndicator color={colors.onPrimary} /> : 'Kaydet'}
+        </Button>
+      </View>
+    </ScrollView>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: colors.background,
   },
-  keyboardView: {
-    flex: 1,
+  content: {
+    padding: spacing.md,
   },
-  scrollView: {
-    flex: 1,
-    padding: 16,
+  photoCard: {
+    marginBottom: spacing.md,
+    elevation: elevation.low,
+    backgroundColor: colors.surface,
   },
-  photoContainer: {
+  photoContent: {
     alignItems: 'center',
-    marginVertical: 20,
+    paddingVertical: spacing.lg,
   },
-  profilePhoto: {
+  avatarContainer: {
+    position: 'relative',
+    marginBottom: spacing.sm,
+  },
+  profileImage: {
     width: 120,
     height: 120,
     borderRadius: 60,
-    borderWidth: 3,
-    borderColor: '#FF4500',
   },
-  avatarPlaceholder: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#FF4500',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 3,
-    borderColor: '#FF4500',
+  avatar: {
+    backgroundColor: colors.primary,
   },
-  initialsText: {
-    fontSize: 40,
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-  },
-  loadingContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: 'rgba(0,0,0,0.1)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 3,
-    borderColor: '#FF4500',
-  },
-  changePhotoButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FF4500',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+  cameraButton: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: colors.primary,
     borderRadius: 20,
-    marginTop: 12,
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: elevation.medium,
   },
-  changePhotoText: {
-    color: '#FFFFFF',
-    marginLeft: 8,
-    fontWeight: '500',
-  },
-  formContainer: {
-    marginBottom: 20,
-  },
-  inputGroup: {
-    marginBottom: 16,
-  },
-  inputLabel: {
-    fontSize: 14,
-    marginBottom: 8,
-    fontWeight: '500',
-  },
-  textInput: {
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    borderWidth: 1,
-  },
-  disabledInput: {
-    opacity: 0.7,
-  },
-  bioInput: {
-    height: 100,
-    textAlignVertical: 'top',
-  },
-  helperText: {
+  photoHint: {
+    color: colors.text.secondary,
     fontSize: 12,
-    marginTop: 4,
+    textAlign: 'center',
   },
-  verificationButton: {
+  card: {
+    marginBottom: spacing.md,
+    elevation: elevation.low,
+    backgroundColor: colors.surface,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  sectionTitle: {
+    color: colors.primary,
+    fontSize: 18,
+  },
+  verifiedChip: {
+    backgroundColor: colors.success,
+  },
+  verifiedChipText: {
+    color: colors.onPrimary,
+    fontSize: 12,
+  },
+  input: {
+    marginBottom: spacing.sm,
+    backgroundColor: colors.surface,
+  },
+  documentUploadButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FF4500',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 16,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderStyle: 'dashed',
+    borderRadius: borderRadius.medium,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
   },
-  verificationButtonText: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
+  documentUploadText: {
+    marginLeft: spacing.sm,
+    color: colors.primary,
     fontSize: 16,
-    marginLeft: 8,
+  },
+  documentInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surfaceLight,
+    padding: spacing.sm,
+    borderRadius: borderRadius.small,
+    marginBottom: spacing.sm,
+  },
+  documentName: {
+    flex: 1,
+    marginLeft: spacing.sm,
+    color: colors.text.primary,
+    fontSize: 14,
   },
   saveButton: {
-    backgroundColor: '#FF4500',
-    borderRadius: 8,
-    padding: 16,
-    alignItems: 'center',
-    marginBottom: 30,
+    marginVertical: spacing.lg,
+    paddingVertical: spacing.sm,
   },
-  saveButtonText: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
-});
-
-export default EditProfileScreen; 
+}); 

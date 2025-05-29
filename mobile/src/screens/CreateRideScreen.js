@@ -1,641 +1,674 @@
-import React, { useState, useContext } from 'react';
-import {
-  StyleSheet,
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
+import React, { useState } from 'react';
+import { 
+  View, 
+  StyleSheet, 
+  ScrollView, 
   Alert,
-  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import Icon from 'react-native-vector-icons/FontAwesome5';
-import DateTimePickerModal from "react-native-modal-datetime-picker";
-import { useTheme } from '../context/ThemeContext';
-import { AuthContext } from '../context/AuthContext';
+import { 
+  Text, 
+  Card, 
+  Button, 
+  TextInput,
+  Title,
+  ActivityIndicator,
+  Chip,
+  Surface,
+  IconButton,
+  RadioButton,
+  Switch
+} from 'react-native-paper';
+import { MaterialIcons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { rideService } from '../services/rideService';
+import { useAuth } from '../hooks/useAuth';
+import { colors, spacing, borderRadius } from '../styles/theme';
 
-const CreateRideScreen = () => {
-  const navigation = useNavigation();
-  const { theme } = useTheme();
-  const { user } = useContext(AuthContext);
+const turkishCities = [
+  'Adana', 'Adıyaman', 'Afyonkarahisar', 'Ağrı', 'Amasya', 'Ankara', 'Antalya', 'Artvin',
+  'Aydın', 'Balıkesir', 'Bilecik', 'Bingöl', 'Bitlis', 'Bolu', 'Burdur', 'Bursa',
+  'Çanakkale', 'Çankırı', 'Çorum', 'Denizli', 'Diyarbakır', 'Edirne', 'Elazığ', 'Erzincan',
+  'Erzurum', 'Eskişehir', 'Gaziantep', 'Giresun', 'Gümüşhane', 'Hakkari', 'Hatay', 'Isparta',
+  'Mersin', 'İstanbul', 'İzmir', 'Kars', 'Kastamonu', 'Kayseri', 'Kırklareli', 'Kırşehir',
+  'Kocaeli', 'Konya', 'Kütahya', 'Malatya', 'Manisa', 'Kahramanmaraş', 'Mardin', 'Muğla',
+  'Muş', 'Nevşehir', 'Niğde', 'Ordu', 'Rize', 'Sakarya', 'Samsun', 'Siirt', 'Sinop',
+  'Sivas', 'Tekirdağ', 'Tokat', 'Trabzon', 'Tunceli', 'Şanlıurfa', 'Uşak', 'Van',
+  'Yozgat', 'Zonguldak', 'Aksaray', 'Bayburt', 'Karaman', 'Kırıkkale', 'Batman', 'Şırnak',
+  'Bartın', 'Ardahan', 'Iğdır', 'Yalova', 'Karabük', 'Kilis', 'Osmaniye', 'Düzce'
+];
 
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
-  const [date, setDate] = useState(null);
-  const [time, setTime] = useState(null);
-  const [seats, setSeats] = useState('3');
-  const [price, setPrice] = useState('');
-  const [description, setDescription] = useState('');
-  const [isDatePickerVisible, setDatePickerVisibility] = useState(false);
-  const [isTimePickerVisible, setTimePickerVisibility] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState({});
+export default function CreateRideScreen({ navigation }) {
+  const { user } = useAuth();
+  const [isLoading, setIsLoading] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
 
-  const [stops, setStops] = useState([{ location: '', time: '' }]);
-  const [preferences, setPreferences] = useState({
-    noSmoking: true,
-    smallLuggage: false,
-    music: false,
-    pets: false,
-    silence: false,
+  const [rideData, setRideData] = useState({
+    // Rota
+    fromCity: '',
+    fromDistrict: '',
+    fromAddress: '',
+    toCity: '',
+    toDistrict: '',
+    toAddress: '',
+    
+    // Tarih ve saat
+    departureDate: new Date(),
+    departureTime: '09:00',
+    
+    // Kapasite ve fiyat
+    availableSeats: 3,
+    pricePerSeat: '',
+    
+    // Araç bilgileri
+    vehicleMake: '',
+    vehicleModel: '',
+    vehicleYear: new Date().getFullYear().toString(),
+    vehicleColor: '',
+    licensePlate: '',
+    
+    // Tercihler
+    smokingAllowed: false,
+    petsAllowed: false,
+    musicAllowed: true,
+    conversationLevel: 'moderate',
+    
+    // Açıklama
+    description: '',
+    notes: ''
   });
 
-  const addStop = () => {
-    setStops([...stops, { location: '', time: '' }]);
-  };
+  const conversationLevels = [
+    { value: 'quiet', label: 'Sessiz', description: 'Sessiz yolculuk' },
+    { value: 'moderate', label: 'Orta', description: 'Ara sıra sohbet' },
+    { value: 'chatty', label: 'Sohbet', description: 'Bol sohbet' }
+  ];
 
-  const updateStop = (index, key, value) => {
-    const newStops = [...stops];
-    newStops[index][key] = value;
-    setStops(newStops);
-  };
-
-  const removeStop = (index) => {
-    if (stops.length > 1) {
-      const newStops = [...stops];
-      newStops.splice(index, 1);
-      setStops(newStops);
-    }
-  };
-
-  const togglePreference = (preference) => {
-    setPreferences({
-      ...preferences,
-      [preference]: !preferences[preference]
-    });
-  };
-
-  const showDatePicker = () => {
-    setDatePickerVisibility(true);
-  };
-
-  const hideDatePicker = () => {
-    setDatePickerVisibility(false);
-  };
-
-  const showTimePicker = () => {
-    setTimePickerVisibility(true);
-  };
-
-  const hideTimePicker = () => {
-    setTimePickerVisibility(false);
-  };
-
-  const handleDateConfirm = (selectedDate) => {
-    setDate(selectedDate);
-    hideDatePicker();
-  };
-
-  const handleTimeConfirm = (selectedTime) => {
-    setTime(selectedTime);
-    hideTimePicker();
+  const handleInputChange = (field, value) => {
+    setRideData(prev => ({
+      ...prev,
+      [field]: value
+    }));
   };
 
   const formatDate = (date) => {
-    if (!date) return '';
-    return date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
+    return date.toLocaleDateString('tr-TR', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
   };
 
-  const formatTime = (time) => {
-    if (!time) return '';
-    return time.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+  const validateForm = () => {
+    const required = ['fromCity', 'toCity', 'pricePerSeat', 'vehicleMake', 'vehicleModel', 'licensePlate'];
+    
+    for (let field of required) {
+      if (!rideData[field]) {
+        Alert.alert('Hata', `${getFieldLabel(field)} alanı gereklidir`);
+        return false;
+      }
+    }
+
+    if (rideData.fromCity === rideData.toCity) {
+      Alert.alert('Hata', 'Başlangıç ve varış şehri aynı olamaz');
+      return false;
+    }
+
+    if (parseInt(rideData.pricePerSeat) < 0) {
+      Alert.alert('Hata', 'Fiyat negatif olamaz');
+      return false;
+    }
+
+    if (rideData.departureDate <= new Date()) {
+      Alert.alert('Hata', 'Kalkış tarihi gelecekte olmalıdır');
+      return false;
+    }
+
+    return true;
   };
 
-  const validate = () => {
-    const newErrors = {};
-    
-    if (!from) newErrors.from = 'Başlangıç konumu gerekli';
-    if (!to) newErrors.to = 'Varış konumu gerekli';
-    if (!date) newErrors.date = 'Tarih gerekli';
-    if (!time) newErrors.time = 'Saat gerekli';
-    if (!seats || parseInt(seats) < 1) newErrors.seats = 'Geçerli koltuk sayısı girin';
-    if (!price || parseFloat(price) <= 0) newErrors.price = 'Geçerli fiyat girin';
-    
-    // Stop validation
-    const invalidStops = stops.some(stop => !stop.location || !stop.time);
-    if (invalidStops) newErrors.stops = 'Tüm duraklar için konum ve saat girin';
-    
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+  const getFieldLabel = (field) => {
+    const labels = {
+      fromCity: 'Başlangıç Şehri',
+      toCity: 'Varış Şehri',
+      pricePerSeat: 'Koltuk Başına Fiyat',
+      vehicleMake: 'Araç Markası',
+      vehicleModel: 'Araç Modeli',
+      licensePlate: 'Plaka'
+    };
+    return labels[field] || field;
   };
 
-  const handleCreateRide = () => {
-    if (validate()) {
-      setLoading(true);
-      
-      // Ride object to be sent to API
-      const ride = {
-        driverId: user.id,
-        from,
-        to,
-        date: date.toISOString(),
-        time: time.toISOString(),
-        availableSeats: parseInt(seats),
-        price: parseFloat(price),
-        description,
-        stops: stops.filter(stop => stop.location && stop.time),
-        preferences: Object.keys(preferences).filter(key => preferences[key]),
+  const handleSubmit = async () => {
+    if (!validateForm()) return;
+
+    try {
+      setIsLoading(true);
+
+      const submitData = {
+        from: {
+          city: rideData.fromCity,
+          district: rideData.fromDistrict || undefined,
+          address: rideData.fromAddress || undefined
+        },
+        to: {
+          city: rideData.toCity,
+          district: rideData.toDistrict || undefined,
+          address: rideData.toAddress || undefined
+        },
+        departureDate: rideData.departureDate.toISOString().split('T')[0],
+        departureTime: rideData.departureTime,
+        availableSeats: parseInt(rideData.availableSeats),
+        pricePerSeat: parseFloat(rideData.pricePerSeat),
+        vehicle: {
+          make: rideData.vehicleMake,
+          model: rideData.vehicleModel,
+          year: parseInt(rideData.vehicleYear),
+          color: rideData.vehicleColor || undefined,
+          licensePlate: rideData.licensePlate
+        },
+        preferences: {
+          smokingAllowed: rideData.smokingAllowed,
+          petsAllowed: rideData.petsAllowed,
+          musicAllowed: rideData.musicAllowed,
+          conversationLevel: rideData.conversationLevel
+        },
+        description: rideData.description || undefined,
+        notes: rideData.notes || undefined
       };
+
+      await rideService.createRide(submitData);
       
-      // Simulate API call
-      setTimeout(() => {
-        setLoading(false);
-        Alert.alert(
-          "Yolculuk Oluşturuldu",
-          "Yolculuğunuz başarıyla oluşturuldu. Yolcular rezervasyon yaptıkça bilgilendirileceksiniz.",
-          [{ text: "Tamam", onPress: () => navigation.navigate('Home') }]
-        );
-      }, 1500);
+      Alert.alert(
+        'Başarılı', 
+        'Yolculuğunuz başarıyla oluşturuldu!',
+        [
+          { 
+            text: 'Tamam', 
+            onPress: () => navigation.navigate('Rides')
+          }
+        ]
+      );
+
+    } catch (error) {
+      console.error('Yolculuk oluşturulurken hata:', error);
+      Alert.alert('Hata', error.response?.data?.message || 'Yolculuk oluşturulurken hata oluştu');
+    } finally {
+      setIsLoading(false);
     }
   };
 
+  const styles = StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+      backgroundColor: colors.surface,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    headerTitle: {
+      fontSize: 18,
+      fontWeight: 'bold',
+      color: colors.text.primary,
+    },
+    keyboardView: {
+      flex: 1,
+    },
+    scrollView: {
+      flex: 1,
+      paddingHorizontal: spacing.md,
+    },
+    section: {
+      marginTop: spacing.md,
+      padding: spacing.md,
+      borderRadius: borderRadius.md,
+      elevation: 2,
+    },
+    sectionTitle: {
+      fontSize: 16,
+      fontWeight: 'bold',
+      marginBottom: spacing.md,
+      color: colors.text.primary,
+    },
+    input: {
+      marginBottom: spacing.md,
+    },
+    row: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+    },
+    halfInput: {
+      flex: 1,
+    },
+    dateTimeButton: {
+      marginBottom: spacing.md,
+      padding: spacing.md,
+      borderWidth: 1,
+      borderColor: colors.text.disabled,
+      borderRadius: borderRadius.sm,
+      backgroundColor: colors.surface,
+    },
+    dateTimeLabel: {
+      fontSize: 12,
+      color: colors.text.secondary,
+      marginBottom: spacing.xs,
+    },
+    dateTimeValue: {
+      fontSize: 16,
+      color: colors.text.primary,
+      fontWeight: '500',
+    },
+    seatsContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: spacing.md,
+    },
+    seatsButton: {
+      borderWidth: 1,
+      borderColor: colors.primary,
+      borderRadius: borderRadius.sm,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      marginHorizontal: spacing.xs,
+    },
+    seatsButtonSelected: {
+      backgroundColor: colors.primary,
+    },
+    seatsButtonText: {
+      color: colors.primary,
+      fontWeight: 'bold',
+    },
+    seatsButtonTextSelected: {
+      color: colors.onPrimary,
+      fontWeight: 'bold',
+    },
+    preferencesContainer: {
+      gap: spacing.md,
+    },
+    preferenceRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: spacing.sm,
+    },
+    preferenceLabel: {
+      fontSize: 16,
+      color: colors.text.primary,
+      flex: 1,
+    },
+    conversationContainer: {
+      gap: spacing.sm,
+    },
+    conversationOption: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: spacing.sm,
+    },
+    conversationText: {
+      marginLeft: spacing.sm,
+      flex: 1,
+    },
+    conversationLabel: {
+      fontSize: 16,
+      color: colors.text.primary,
+      fontWeight: '500',
+    },
+    conversationDesc: {
+      fontSize: 14,
+      color: colors.text.secondary,
+    },
+    submitContainer: {
+      padding: spacing.md,
+      backgroundColor: colors.surface,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    submitButton: {
+      borderRadius: borderRadius.md,
+    },
+    submitButtonContent: {
+      height: 48,
+    },
+    bottomSpace: {
+      height: spacing.lg,
+    },
+  });
+
   return (
-    <KeyboardAvoidingView 
-      style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
-    >
-      <ScrollView 
-        style={[styles.container, { backgroundColor: theme.backgroundColor }]}
-        contentContainerStyle={styles.contentContainer}
-        keyboardShouldPersistTaps="handled"
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <IconButton
+          icon="arrow-left"
+          size={24}
+          iconColor={colors.text.primary}
+          onPress={() => navigation.goBack()}
+        />
+        <Title style={styles.headerTitle}>Yolculuk Oluştur</Title>
+        <View style={{ width: 40 }} />
+      </View>
+
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardView}
       >
-        <View style={styles.header}>
-          <Text style={[styles.title, { color: theme.textColor }]}>Yolculuk Oluştur</Text>
-          <Text style={[styles.subtitle, { color: theme.textSecondaryColor }]}>
-            Yolculuk detaylarını girerek boş koltuklarınızı değerlendirin
-          </Text>
-        </View>
-        
-        <View style={styles.formContainer}>
-          <View style={styles.sectionContainer}>
-            <Text style={[styles.sectionTitle, { color: theme.textColor }]}>Rota Bilgileri</Text>
+        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+          
+          {/* Rota Bilgileri */}
+          <Surface style={styles.section}>
+            <Title style={styles.sectionTitle}>Rota Bilgileri</Title>
             
-            <View style={styles.inputContainer}>
-              <Icon name="map-marker-alt" size={18} color="#888888" style={styles.inputIcon} />
+            <View style={styles.row}>
               <TextInput
-                style={[styles.input, 
-                  { borderColor: errors.from ? '#FF5A5F' : theme.borderColor, 
-                    color: theme.textColor }]}
-                placeholder="Nereden (şehir, lokasyon)"
-                placeholderTextColor="#888888"
-                value={from}
-                onChangeText={setFrom}
+                label="Başlangıç Şehri"
+                value={rideData.fromCity}
+                onChangeText={(text) => handleInputChange('fromCity', text)}
+                style={[styles.input, styles.halfInput]}
+                mode="outlined"
+                outlineColor={colors.text.disabled}
+                activeOutlineColor={colors.primary}
               />
-              {errors.from && <Text style={styles.errorText}>{errors.from}</Text>}
-            </View>
-            
-            <View style={styles.inputContainer}>
-              <Icon name="map-marker-alt" size={18} color="#888888" style={styles.inputIcon} />
+
               <TextInput
-                style={[styles.input, 
-                  { borderColor: errors.to ? '#FF5A5F' : theme.borderColor, 
-                    color: theme.textColor }]}
-                placeholder="Nereye (şehir, lokasyon)"
-                placeholderTextColor="#888888"
-                value={to}
-                onChangeText={setTo}
+                label="Varış Şehri"
+                value={rideData.toCity}
+                onChangeText={(text) => handleInputChange('toCity', text)}
+                style={[styles.input, styles.halfInput]}
+                mode="outlined"
+                outlineColor={colors.text.disabled}
+                activeOutlineColor={colors.primary}
               />
-              {errors.to && <Text style={styles.errorText}>{errors.to}</Text>}
             </View>
-            
-            <View style={styles.dateTimeContainer}>
-              <TouchableOpacity 
-                style={[styles.dateTimePicker, 
-                  { borderColor: errors.date ? '#FF5A5F' : theme.borderColor }]} 
-                onPress={showDatePicker}
-              >
-                <Icon name="calendar-alt" size={18} color="#888888" />
-                <Text style={[styles.dateTimeText, { color: theme.textColor }]}>
-                  {date ? formatDate(date) : "Tarih Seçin"}
-                </Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[styles.dateTimePicker, 
-                  { borderColor: errors.time ? '#FF5A5F' : theme.borderColor }]} 
-                onPress={showTimePicker}
-              >
-                <Icon name="clock" size={18} color="#888888" />
-                <Text style={[styles.dateTimeText, { color: theme.textColor }]}>
-                  {time ? formatTime(time) : "Saat Seçin"}
-                </Text>
-              </TouchableOpacity>
+
+            <View style={styles.row}>
+              <TextInput
+                label="Başlangıç İlçe (İsteğe bağlı)"
+                value={rideData.fromDistrict}
+                onChangeText={(text) => handleInputChange('fromDistrict', text)}
+                style={[styles.input, styles.halfInput]}
+                mode="outlined"
+                outlineColor={colors.text.disabled}
+                activeOutlineColor={colors.primary}
+              />
+
+              <TextInput
+                label="Varış İlçe (İsteğe bağlı)"
+                value={rideData.toDistrict}
+                onChangeText={(text) => handleInputChange('toDistrict', text)}
+                style={[styles.input, styles.halfInput]}
+                mode="outlined"
+                outlineColor={colors.text.disabled}
+                activeOutlineColor={colors.primary}
+              />
             </View>
-            {(errors.date || errors.time) && (
-              <Text style={styles.errorText}>{errors.date || errors.time}</Text>
-            )}
-            
-            <DateTimePickerModal
-              isVisible={isDatePickerVisible}
-              mode="date"
-              minimumDate={new Date()}
-              onConfirm={handleDateConfirm}
-              onCancel={hideDatePicker}
+
+            <TextInput
+              label="Başlangıç Adresi (İsteğe bağlı)"
+              value={rideData.fromAddress}
+              onChangeText={(text) => handleInputChange('fromAddress', text)}
+              style={styles.input}
+              mode="outlined"
+              outlineColor={colors.text.disabled}
+              activeOutlineColor={colors.primary}
             />
-            
-            <DateTimePickerModal
-              isVisible={isTimePickerVisible}
-              mode="time"
-              onConfirm={handleTimeConfirm}
-              onCancel={hideTimePicker}
+
+            <TextInput
+              label="Varış Adresi (İsteğe bağlı)"
+              value={rideData.toAddress}
+              onChangeText={(text) => handleInputChange('toAddress', text)}
+              style={styles.input}
+              mode="outlined"
+              outlineColor={colors.text.disabled}
+              activeOutlineColor={colors.primary}
             />
-          </View>
-          
-          <View style={styles.sectionContainer}>
-            <Text style={[styles.sectionTitle, { color: theme.textColor }]}>Duraklar</Text>
-            <Text style={[styles.sectionSubtitle, { color: theme.textSecondaryColor }]}>
-              Yolculuk sırasında duracağınız noktaları ekleyin (opsiyonel)
-            </Text>
+          </Surface>
+
+          {/* Tarih ve Saat */}
+          <Surface style={styles.section}>
+            <Title style={styles.sectionTitle}>Tarih ve Saat</Title>
             
-            {stops.map((stop, index) => (
-              <View key={index} style={styles.stopContainer}>
-                <View style={styles.stopInputs}>
-                  <TextInput
-                    style={[styles.stopInput, 
-                      { borderColor: theme.borderColor, color: theme.textColor }]}
-                    placeholder="Durak (şehir, lokasyon)"
-                    placeholderTextColor="#888888"
-                    value={stop.location}
-                    onChangeText={(text) => updateStop(index, 'location', text)}
-                  />
-                  <TextInput
-                    style={[styles.stopInput, 
-                      { borderColor: theme.borderColor, color: theme.textColor, marginLeft: 10 }]}
-                    placeholder="Tahmini Saat"
-                    placeholderTextColor="#888888"
-                    value={stop.time}
-                    onChangeText={(text) => updateStop(index, 'time', text)}
-                  />
-                </View>
-                {stops.length > 1 && (
-                  <TouchableOpacity 
-                    style={styles.removeStopButton} 
-                    onPress={() => removeStop(index)}
-                  >
-                    <Icon name="trash-alt" size={16} color="#FF5A5F" />
-                  </TouchableOpacity>
-                )}
-              </View>
-            ))}
+            <Surface style={styles.dateTimeButton} onTouchEnd={() => setShowDatePicker(true)}>
+              <Text style={styles.dateTimeLabel}>Kalkış Tarihi</Text>
+              <Text style={styles.dateTimeValue}>{formatDate(rideData.departureDate)}</Text>
+            </Surface>
+
+            <TextInput
+              label="Kalkış Saati (HH:MM)"
+              value={rideData.departureTime}
+              onChangeText={(text) => handleInputChange('departureTime', text)}
+              style={styles.input}
+              mode="outlined"
+              placeholder="09:00"
+              outlineColor={colors.text.disabled}
+              activeOutlineColor={colors.primary}
+            />
+          </Surface>
+
+          {/* Kapasite ve Fiyat */}
+          <Surface style={styles.section}>
+            <Title style={styles.sectionTitle}>Kapasite ve Fiyat</Title>
             
-            {errors.stops && <Text style={styles.errorText}>{errors.stops}</Text>}
-            
-            <TouchableOpacity style={styles.addStopButton} onPress={addStop}>
-              <Icon name="plus-circle" size={16} color="#4A90E2" />
-              <Text style={styles.addStopText}>Durak Ekle</Text>
-            </TouchableOpacity>
-          </View>
-          
-          <View style={styles.sectionContainer}>
-            <Text style={[styles.sectionTitle, { color: theme.textColor }]}>Yolculuk Detayları</Text>
-            
-            <View style={styles.detailsRow}>
-              <View style={[styles.detailInput, { marginRight: 10 }]}>
-                <Text style={[styles.detailLabel, { color: theme.textSecondaryColor }]}>
-                  Boş Koltuk
-                </Text>
-                <TextInput
-                  style={[styles.numberInput, 
-                    { borderColor: errors.seats ? '#FF5A5F' : theme.borderColor, 
-                      color: theme.textColor }]}
-                  placeholder="3"
-                  placeholderTextColor="#888888"
-                  keyboardType="number-pad"
-                  value={seats}
-                  onChangeText={setSeats}
-                />
-                {errors.seats && <Text style={styles.errorText}>{errors.seats}</Text>}
-              </View>
-              
-              <View style={styles.detailInput}>
-                <Text style={[styles.detailLabel, { color: theme.textSecondaryColor }]}>
-                  Kişi Başı Ücret (₺)
-                </Text>
-                <TextInput
-                  style={[styles.numberInput, 
-                    { borderColor: errors.price ? '#FF5A5F' : theme.borderColor, 
-                      color: theme.textColor }]}
-                  placeholder="150"
-                  placeholderTextColor="#888888"
-                  keyboardType="decimal-pad"
-                  value={price}
-                  onChangeText={setPrice}
-                />
-                {errors.price && <Text style={styles.errorText}>{errors.price}</Text>}
-              </View>
+            <Text style={styles.dateTimeLabel}>Müsait Koltuk Sayısı</Text>
+            <View style={styles.seatsContainer}>
+              {[1, 2, 3, 4, 5, 6, 7, 8].map((num) => (
+                <Surface
+                  key={num}
+                  style={[
+                    styles.seatsButton,
+                    rideData.availableSeats === num && styles.seatsButtonSelected
+                  ]}
+                  onTouchEnd={() => handleInputChange('availableSeats', num)}
+                >
+                  <Text style={[
+                    styles.seatsButtonText,
+                    rideData.availableSeats === num && styles.seatsButtonTextSelected
+                  ]}>
+                    {num}
+                  </Text>
+                </Surface>
+              ))}
             </View>
+
+            <TextInput
+              label="Koltuk Başına Fiyat (₺)"
+              value={rideData.pricePerSeat}
+              onChangeText={(text) => handleInputChange('pricePerSeat', text)}
+              style={styles.input}
+              mode="outlined"
+              keyboardType="numeric"
+              outlineColor={colors.text.disabled}
+              activeOutlineColor={colors.primary}
+            />
+          </Surface>
+
+          {/* Araç Bilgileri */}
+          <Surface style={styles.section}>
+            <Title style={styles.sectionTitle}>Araç Bilgileri</Title>
             
-            <View style={styles.inputContainer}>
+            <View style={styles.row}>
               <TextInput
-                style={[styles.textArea, 
-                  { borderColor: theme.borderColor, color: theme.textColor }]}
-                placeholder="Yolculuk hakkında ek bilgiler (opsiyonel)"
-                placeholderTextColor="#888888"
-                multiline
-                numberOfLines={4}
-                textAlignVertical="top"
-                value={description}
-                onChangeText={setDescription}
+                label="Marka"
+                value={rideData.vehicleMake}
+                onChangeText={(text) => handleInputChange('vehicleMake', text)}
+                style={[styles.input, styles.halfInput]}
+                mode="outlined"
+                outlineColor={colors.text.disabled}
+                activeOutlineColor={colors.primary}
+              />
+
+              <TextInput
+                label="Model"
+                value={rideData.vehicleModel}
+                onChangeText={(text) => handleInputChange('vehicleModel', text)}
+                style={[styles.input, styles.halfInput]}
+                mode="outlined"
+                outlineColor={colors.text.disabled}
+                activeOutlineColor={colors.primary}
               />
             </View>
-          </View>
-          
-          <View style={styles.sectionContainer}>
-            <Text style={[styles.sectionTitle, { color: theme.textColor }]}>Tercihler</Text>
-            <Text style={[styles.sectionSubtitle, { color: theme.textSecondaryColor }]}>
-              Yolculuk sırasındaki tercihlerinizi belirtin
-            </Text>
+
+            <View style={styles.row}>
+              <TextInput
+                label="Yıl"
+                value={rideData.vehicleYear}
+                onChangeText={(text) => handleInputChange('vehicleYear', text)}
+                style={[styles.input, styles.halfInput]}
+                mode="outlined"
+                keyboardType="numeric"
+                outlineColor={colors.text.disabled}
+                activeOutlineColor={colors.primary}
+              />
+
+              <TextInput
+                label="Renk (İsteğe bağlı)"
+                value={rideData.vehicleColor}
+                onChangeText={(text) => handleInputChange('vehicleColor', text)}
+                style={[styles.input, styles.halfInput]}
+                mode="outlined"
+                outlineColor={colors.text.disabled}
+                activeOutlineColor={colors.primary}
+              />
+            </View>
+
+            <TextInput
+              label="Plaka"
+              value={rideData.licensePlate}
+              onChangeText={(text) => handleInputChange('licensePlate', text.toUpperCase())}
+              style={styles.input}
+              mode="outlined"
+              placeholder="34 ABC 123"
+              outlineColor={colors.text.disabled}
+              activeOutlineColor={colors.primary}
+            />
+          </Surface>
+
+          {/* Tercihler */}
+          <Surface style={styles.section}>
+            <Title style={styles.sectionTitle}>Yolculuk Tercihleri</Title>
             
             <View style={styles.preferencesContainer}>
-              <TouchableOpacity 
-                style={[styles.preferenceItem, preferences.noSmoking && styles.preferenceSelected]} 
-                onPress={() => togglePreference('noSmoking')}
-              >
-                <Icon 
-                  name="smoking-ban" 
-                  size={18} 
-                  color={preferences.noSmoking ? "#FFFFFF" : "#888888"} 
+              <View style={styles.preferenceRow}>
+                <Text style={styles.preferenceLabel}>Sigara İçilebilir</Text>
+                <Switch
+                  value={rideData.smokingAllowed}
+                  onValueChange={(value) => handleInputChange('smokingAllowed', value)}
+                  color={colors.primary}
                 />
-                <Text style={[styles.preferenceText, 
-                  { color: preferences.noSmoking ? "#FFFFFF" : theme.textColor }]}>
-                  Sigara İçilmez
-                </Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[styles.preferenceItem, preferences.smallLuggage && styles.preferenceSelected]} 
-                onPress={() => togglePreference('smallLuggage')}
-              >
-                <Icon 
-                  name="luggage-cart" 
-                  size={18} 
-                  color={preferences.smallLuggage ? "#FFFFFF" : "#888888"} 
+              </View>
+
+              <View style={styles.preferenceRow}>
+                <Text style={styles.preferenceLabel}>Evcil Hayvan Kabul</Text>
+                <Switch
+                  value={rideData.petsAllowed}
+                  onValueChange={(value) => handleInputChange('petsAllowed', value)}
+                  color={colors.primary}
                 />
-                <Text style={[styles.preferenceText, 
-                  { color: preferences.smallLuggage ? "#FFFFFF" : theme.textColor }]}>
-                  Küçük Bagaj
-                </Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[styles.preferenceItem, preferences.music && styles.preferenceSelected]} 
-                onPress={() => togglePreference('music')}
-              >
-                <Icon 
-                  name="music" 
-                  size={18} 
-                  color={preferences.music ? "#FFFFFF" : "#888888"} 
+              </View>
+
+              <View style={styles.preferenceRow}>
+                <Text style={styles.preferenceLabel}>Müzik Dinlenebilir</Text>
+                <Switch
+                  value={rideData.musicAllowed}
+                  onValueChange={(value) => handleInputChange('musicAllowed', value)}
+                  color={colors.primary}
                 />
-                <Text style={[styles.preferenceText, 
-                  { color: preferences.music ? "#FFFFFF" : theme.textColor }]}>
-                  Müzik Açık
-                </Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[styles.preferenceItem, preferences.pets && styles.preferenceSelected]} 
-                onPress={() => togglePreference('pets')}
-              >
-                <Icon 
-                  name="paw" 
-                  size={18} 
-                  color={preferences.pets ? "#FFFFFF" : "#888888"} 
-                />
-                <Text style={[styles.preferenceText, 
-                  { color: preferences.pets ? "#FFFFFF" : theme.textColor }]}>
-                  Evcil Hayvan
-                </Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[styles.preferenceItem, preferences.silence && styles.preferenceSelected]} 
-                onPress={() => togglePreference('silence')}
-              >
-                <Icon 
-                  name="volume-mute" 
-                  size={18} 
-                  color={preferences.silence ? "#FFFFFF" : "#888888"} 
-                />
-                <Text style={[styles.preferenceText, 
-                  { color: preferences.silence ? "#FFFFFF" : theme.textColor }]}>
-                  Sessiz Yolculuk
-                </Text>
-              </TouchableOpacity>
+              </View>
             </View>
-          </View>
-          
-          <TouchableOpacity 
-            style={[styles.createButton, { opacity: loading ? 0.7 : 1 }]} 
-            onPress={handleCreateRide}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#FFFFFF" size="small" />
-            ) : (
-              <Text style={styles.createButtonText}>Yolculuk Oluştur</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+
+            <Text style={[styles.sectionTitle, { marginTop: spacing.lg, marginBottom: spacing.sm }]}>
+              Sohbet Seviyesi
+            </Text>
+            <View style={styles.conversationContainer}>
+              {conversationLevels.map((level) => (
+                <Surface key={level.value} style={styles.conversationOption} onTouchEnd={() => handleInputChange('conversationLevel', level.value)}>
+                  <RadioButton
+                    value={level.value}
+                    status={rideData.conversationLevel === level.value ? 'checked' : 'unchecked'}
+                    color={colors.primary}
+                  />
+                  <View style={styles.conversationText}>
+                    <Text style={styles.conversationLabel}>{level.label}</Text>
+                    <Text style={styles.conversationDesc}>{level.description}</Text>
+                  </View>
+                </Surface>
+              ))}
+            </View>
+          </Surface>
+
+          {/* Açıklama */}
+          <Surface style={styles.section}>
+            <Title style={styles.sectionTitle}>Ek Bilgiler</Title>
+            
+            <TextInput
+              label="Açıklama (İsteğe bağlı)"
+              value={rideData.description}
+              onChangeText={(text) => handleInputChange('description', text)}
+              style={styles.input}
+              mode="outlined"
+              multiline
+              numberOfLines={3}
+              placeholder="Yolculuk hakkında bilgi verebilirsiniz..."
+              outlineColor={colors.text.disabled}
+              activeOutlineColor={colors.primary}
+            />
+
+            <TextInput
+              label="Notlar (İsteğe bağlı)"
+              value={rideData.notes}
+              onChangeText={(text) => handleInputChange('notes', text)}
+              style={styles.input}
+              mode="outlined"
+              multiline
+              numberOfLines={2}
+              placeholder="Özel istekler, toplanma noktası vb..."
+              outlineColor={colors.text.disabled}
+              activeOutlineColor={colors.primary}
+            />
+          </Surface>
+
+          <View style={styles.bottomSpace} />
+        </ScrollView>
+      </KeyboardAvoidingView>
+
+      {/* Date Picker */}
+      {showDatePicker && (
+        <DateTimePicker
+          value={rideData.departureDate}
+          mode="date"
+          display="default"
+          onChange={(event, selectedDate) => {
+            setShowDatePicker(false);
+            if (selectedDate) {
+              handleInputChange('departureDate', selectedDate);
+            }
+          }}
+          minimumDate={new Date()}
+        />
+      )}
+
+      {/* Submit Button */}
+      <View style={styles.submitContainer}>
+        <Button
+          mode="contained"
+          onPress={handleSubmit}
+          loading={isLoading}
+          disabled={isLoading}
+          style={styles.submitButton}
+          buttonColor={colors.primary}
+          contentStyle={styles.submitButtonContent}
+        >
+          {isLoading ? 'Oluşturuluyor...' : 'Yolculuk Oluştur'}
+        </Button>
+      </View>
+    </SafeAreaView>
   );
-};
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
-  contentContainer: {
-    padding: 16,
-  },
-  header: {
-    marginBottom: 24,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333333',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#666666',
-    lineHeight: 20,
-  },
-  formContainer: {
-    marginBottom: 24,
-  },
-  sectionContainer: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333333',
-    marginBottom: 8,
-  },
-  sectionSubtitle: {
-    fontSize: 14,
-    color: '#666666',
-    marginBottom: 16,
-  },
-  inputContainer: {
-    marginBottom: 16,
-    position: 'relative',
-  },
-  inputIcon: {
-    position: 'absolute',
-    left: 16,
-    top: 16,
-    zIndex: 1,
-  },
-  input: {
-    backgroundColor: '#F5F5F5',
-    borderWidth: 1,
-    borderColor: '#DDDDDD',
-    borderRadius: 8,
-    paddingVertical: 14,
-    paddingLeft: 48,
-    paddingRight: 16,
-    fontSize: 16,
-    color: '#333333',
-  },
-  dateTimeContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  dateTimePicker: {
-    backgroundColor: '#F5F5F5',
-    borderWidth: 1,
-    borderColor: '#DDDDDD',
-    borderRadius: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    fontSize: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 0.48,
-  },
-  dateTimeText: {
-    fontSize: 16,
-    color: '#333333',
-    marginLeft: 12,
-  },
-  stopContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  stopInputs: {
-    flex: 1,
-    flexDirection: 'row',
-  },
-  stopInput: {
-    backgroundColor: '#F5F5F5',
-    borderWidth: 1,
-    borderColor: '#DDDDDD',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    fontSize: 15,
-    color: '#333333',
-    flex: 1,
-  },
-  removeStopButton: {
-    padding: 10,
-    marginLeft: 8,
-  },
-  addStopButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  addStopText: {
-    color: '#4A90E2',
-    fontSize: 15,
-    fontWeight: '500',
-    marginLeft: 8,
-  },
-  detailsRow: {
-    flexDirection: 'row',
-    marginBottom: 16,
-  },
-  detailInput: {
-    flex: 1,
-  },
-  detailLabel: {
-    fontSize: 14,
-    color: '#666666',
-    marginBottom: 8,
-  },
-  numberInput: {
-    backgroundColor: '#F5F5F5',
-    borderWidth: 1,
-    borderColor: '#DDDDDD',
-    borderRadius: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    fontSize: 16,
-    color: '#333333',
-    textAlign: 'center',
-  },
-  textArea: {
-    backgroundColor: '#F5F5F5',
-    borderWidth: 1,
-    borderColor: '#DDDDDD',
-    borderRadius: 8,
-    padding: 16,
-    fontSize: 16,
-    color: '#333333',
-    minHeight: 100,
-  },
-  preferencesContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginHorizontal: -5,
-  },
-  preferenceItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F5F5F5',
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginHorizontal: 5,
-    marginBottom: 10,
-  },
-  preferenceSelected: {
-    backgroundColor: '#4A90E2',
-  },
-  preferenceText: {
-    fontSize: 14,
-    color: '#333333',
-    marginLeft: 8,
-  },
-  createButton: {
-    backgroundColor: '#FF5A5F',
-    borderRadius: 8,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  createButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  errorText: {
-    color: '#FF5A5F',
-    fontSize: 12,
-    marginTop: 4,
-    marginLeft: 4,
-  },
-});
-
-export default CreateRideScreen; 
+} 
