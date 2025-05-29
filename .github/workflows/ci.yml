@@ -53,15 +53,27 @@ jobs:
       with:
         node-version: '18'
     
+    - name: Clear npm cache
+      run: npm cache clean --force
+    
     - name: Install dependencies
       run: |
         cd web
+        rm -rf node_modules package-lock.json
         npm install
+    
+    - name: Verify dependencies
+      run: |
+        cd web
+        npm list react-router-dom || echo "react-router-dom not found, reinstalling..."
+        npm install react-router-dom@^7.6.1
     
     - name: Run tests
       run: |
         cd web
-        CI=true npm test -- --coverage --watchAll=false
+        npm test -- --coverage --watchAll=false --testTimeout=30000
+      env:
+        CI: true
     
     - name: Run lint
       run: |
